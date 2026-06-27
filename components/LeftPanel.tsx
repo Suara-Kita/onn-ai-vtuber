@@ -13,19 +13,37 @@ export default function LeftPanel() {
       {/* TOP BAR */}
       <header className="top-bar">
         <div className="brand">
-          <span className="logo-pill">Tanya lah Onn</span>
-        </div>
-        <div className="live-badge">
-          <span className="live-dot" />
-          LIVE
+          {/* Skewed brand block — reference design pattern */}
+          <div style={{
+            background: "#000066",
+            borderLeft: "4px solid #EE1C25",
+            padding: "6px 20px 6px 14px",
+            transform: "skewX(-10deg)",
+            display: "inline-flex",
+            alignItems: "center",
+          }}>
+            <span style={{
+              fontFamily: "var(--font-anybody), system-ui, sans-serif",
+              fontWeight: 800,
+              fontStyle: "italic",
+              fontSize: 13,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              color: "#fff",
+              display: "inline-block",
+              transform: "skewX(10deg)",
+            }}>
+              Tanya lah Onn
+            </span>
+          </div>
         </div>
       </header>
 
       {/* CONTENT CARD */}
       <main className="content-card">
 
-        {/* Large white content card — height based on content, doesn't stretch */}
-        <div className="white-card" style={{ flex: "none", marginTop: 32, paddingBottom: 160 }}>
+        {/* White report card */}
+        <div className="white-card" style={{ flex: "none", marginTop: 24, paddingBottom: 120 }}>
           <div className="section-label">Laporan Hari Ini</div>
 
           <h1 className="headline">

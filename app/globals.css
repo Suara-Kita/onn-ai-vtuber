@@ -2,15 +2,15 @@
 
 @layer base {
   :root {
-    --bg-panel:       #0f1117;
-    --bg-qa:          rgba(0, 0, 0, 0.75);
-    --accent-yellow:  #f5c400;
-    --accent-teal:    #00c9a7;
-    --accent-red:     #ff4d4d;
-    --text-primary:   #f0f0f5;
-    --text-secondary: #9499b0;
-    --badge-bg:       #1e2030;
-    --border:         rgba(255, 255, 255, 0.07);
+    /* DESIGN.md — Velocity Streamer brand palette */
+    --bg-panel:       #000066;   /* Deep Navy — chassis/containers */
+    --bg-qa:          rgba(0, 0, 50, 0.85);
+    --accent-primary: #bfc2ff;   /* Brand purple-blue — badges, accents */
+    --accent-red:     #EE1C25;   /* Bright Red — live indicators, active states */
+    --text-primary:   #e4e1e9;   /* on-background */
+    --text-secondary: #c7c5d3;   /* on-surface-variant */
+    --badge-bg:       #1f1f25;   /* surface-container */
+    --border:         rgba(191, 194, 255, 0.15);
     /* Brand fonts — wired from next/font CSS variables */
     --font-display:   var(--font-anybody), system-ui, sans-serif;
     --font-main:      var(--font-geist), system-ui, sans-serif;
@@ -26,7 +26,7 @@
   html, body {
     width: 100%;
     height: 100%;
-    background: #080a0f;
+    background: #0A0A0F;   /* Onyx Neutral */
     font-family: var(--font-main);
     color: var(--text-primary);
     overflow: hidden;
@@ -69,10 +69,10 @@
     gap: 10px;
   }
 
-  /* Anybody italic — velocity brand mark */
+  /* Anybody italic — velocity brand mark, Bright Red brand color */
   .logo-pill {
-    background: var(--accent-teal);
-    color: #000;
+    background: var(--accent-red);
+    color: #fff;
     font-family: var(--font-display);
     font-weight: 800;
     font-style: italic;
@@ -80,7 +80,7 @@
     letter-spacing: 0.06em;
     text-transform: uppercase;
     padding: 5px 14px;
-    border-radius: 4px;
+    border-radius: 2px;
   }
 
   /* JetBrains Mono — telemetry label feel */
@@ -88,8 +88,8 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    background: rgba(255, 77, 77, 0.12);
-    border: 1px solid rgba(255, 77, 77, 0.4);
+    background: rgba(238, 28, 37, 0.15);
+    border: 1px solid rgba(238, 28, 37, 0.5);
     color: var(--accent-red);
     font-family: var(--font-mono);
     font-size: 10px;
@@ -124,11 +124,11 @@
     margin-bottom: 20px;
   }
 
-  /* JetBrains Mono data chip */
+  /* JetBrains Mono data chip — primary brand purple-blue */
   .badge {
-    background: var(--badge-bg);
-    border: 1px solid var(--accent-teal);
-    color: var(--accent-teal);
+    background: rgba(191, 194, 255, 0.08);
+    border: 1px solid var(--accent-primary);
+    color: var(--accent-primary);
     font-family: var(--font-mono);
     font-size: 10px;
     font-weight: 500;
@@ -138,10 +138,11 @@
     border-radius: 2px;
   }
 
-  /* Large white content card */
+  /* Large white content card — sharp corners per brand geometry */
   .white-card {
     background: #ffffff;
-    border-radius: 8px;
+    border-radius: 2px;
+    border-left: 4px solid #EE1C25;
     padding: 24px 24px 20px;
     flex: 1;
     display: flex;
@@ -151,23 +152,23 @@
 
   /* On white bg: override colors for legibility */
   .white-card .section-label {
-    color: #8a8fa8;
+    color: #6b7299;
   }
 
   .white-card .headline {
-    color: #0d0f1a;
+    color: #000066;   /* Deep Navy on white */
   }
 
   .white-card .points-label {
-    color: #a06800;
+    color: #EE1C25;   /* Bright Red label on white */
   }
 
   .white-card .bullet-list li {
-    color: #3a3f5c;
+    color: #1b1f3a;
   }
 
   .white-card .bullet-list li::before {
-    color: #c87a00;
+    color: #EE1C25;
   }
 
   /* JetBrains Mono section label — label-mono scale */
@@ -196,8 +197,8 @@
   .accent-line {
     width: 44px;
     height: 3px;
-    background: #f5c400;
-    border-radius: 2px;
+    background: var(--accent-red);
+    border-radius: 0;
     margin-bottom: 20px;
   }
 
@@ -208,7 +209,7 @@
     font-weight: 700;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--accent-yellow);
+    color: var(--accent-primary);
     margin-bottom: 10px;
   }
 
@@ -233,7 +234,7 @@
 
   .bullet-list li::before {
     content: '▸';
-    color: var(--accent-yellow);
+    color: var(--accent-primary);
     font-size: 11px;
     margin-top: 3px;
     flex-shrink: 0;
@@ -260,7 +261,7 @@
   .bg-blur {
     position: absolute;
     inset: 0;
-    background: linear-gradient(160deg, #1a2a1a 0%, #0d1a2e 60%, #0a0a14 100%);
+    background: linear-gradient(160deg, #00004a 0%, #000033 60%, #0A0A0F 100%);
     z-index: 0;
   }
 
@@ -269,9 +270,9 @@
     position: absolute;
     inset: 0;
     background:
-      radial-gradient(circle at 25% 60%, rgba(0, 201, 167, 0.08) 0%, transparent 45%),
-      radial-gradient(circle at 75% 30%, rgba(245, 196, 0, 0.06) 0%, transparent 40%),
-      radial-gradient(circle at 50% 80%, rgba(80, 120, 200, 0.07) 0%, transparent 50%);
+      radial-gradient(circle at 30% 60%, rgba(238, 28, 37, 0.07) 0%, transparent 45%),
+      radial-gradient(circle at 70% 30%, rgba(191, 194, 255, 0.08) 0%, transparent 40%),
+      radial-gradient(circle at 50% 85%, rgba(0, 0, 102, 0.3) 0%, transparent 50%);
   }
 
   .vrm-wrap {
@@ -288,7 +289,7 @@
     top: 0;
     width: 40px;
     height: 100%;
-    background: linear-gradient(to right, var(--bg-panel), transparent);
+    background: linear-gradient(to right, #000066, transparent);
     z-index: 3;
     pointer-events: none;
   }

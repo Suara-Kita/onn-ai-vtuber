@@ -1,97 +1,177 @@
 "use client";
 
-const Q_TEXT =
-  "Apakah langkah kerajaan untuk memastikan projek infrastruktur di Sekijang P.141 disiapkan mengikut jadual dan memberi manfaat kepada penduduk tempatan?";
+import { useEffect, useState } from "react";
 
-const A_TEXT =
-  "Kerajaan telah memperuntukkan RM45 juta untuk projek infrastruktur Sekijang, dengan pemantauan bulanan oleh JKR dan penglibatan komuniti tempatan dalam proses perancangan.";
-
-const FONT_MONO = "var(--font-jetbrains-mono), 'Courier New', monospace";
-const FONT_MAIN = "var(--font-geist), system-ui, sans-serif";
+const QA_DATA = [
+  {
+    q: "Apakah langkah kerajaan memastikan projek infrastruktur Sekijang P.141 disiapkan mengikut jadual?",
+    a: "Kerajaan memperuntukkan RM45 juta dengan pemantauan bulanan JKR dan penglibatan komuniti tempatan dalam perancangan.",
+  },
+  {
+    q: "Bagaimana kawasan ekonomi khas Johor-Singapura memberi manfaat kepada penduduk tempatan Sekijang?",
+    a: "Pelaburan RM8.2 bilion dijangka mewujudkan 12,000 peluang pekerjaan baharu untuk penduduk Johor menjelang 2027.",
+  },
+  {
+    q: "Apakah status terkini projek naik taraf Jalan Sekijang sepanjang 18km yang dijangka siap Q4 2026?",
+    a: "Kerja tanah telah mencapai 60% kemajuan. Kontraktor tempatan diutamakan dalam semua fasa projek ini.",
+  },
+  {
+    q: "Apakah program perumahan mampu milik yang dirancang untuk golongan B40 di Batu Pahat?",
+    a: "Sebanyak 2,000 unit rumah mampu milik sedang dibina menjelang 2027 di bawah program perumahan Johor baharu.",
+  },
+];
 
 export default function QAOverlay() {
+  const [idx, setIdx] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setIdx((i) => (i + 1) % QA_DATA.length);
+        setVisible(true);
+      }, 500);
+    }, 7000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const qa = QA_DATA[idx];
+
   return (
-    <div style={{
-      position: "absolute",
-      bottom: 20,
-      left: 20,
-      right: 20,
-      zIndex: 20,
-      background: "rgba(255, 255, 255, 0.96)",
-      backdropFilter: "blur(20px)",
-      WebkitBackdropFilter: "blur(20px)",
-      borderRadius: 8,
-      border: "1px solid rgba(255,255,255,0.8)",
-      padding: "16px 28px 18px",
-      display: "flex",
-      flexDirection: "column",
-      gap: 8,
-      boxShadow: "0 12px 40px rgba(0,0,0,0.3)",
-    }}>
-
-      {/* Question */}
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12, overflow: "hidden" }}>
-        <span style={{
-          fontFamily: FONT_MONO,
-          fontSize: 11,
-          fontWeight: 700,
-          minWidth: 22,
-          flexShrink: 0,
-          color: "#9a6200",
-          letterSpacing: "0.1em",
-          textTransform: "uppercase",
-        }}>S.</span>
-        <div style={{ overflow: "hidden", flex: 1 }}>
-          <p style={{
-            fontFamily: FONT_MAIN,
-            fontSize: 13,
-            fontWeight: 400,
-            lineHeight: 1.5,
-            color: "#0d0f1a",
-            whiteSpace: "nowrap",
-            margin: 0,
-            display: "inline-block",
-            animation: "qa-scroll 28s linear infinite",
-          }}>
-            {Q_TEXT}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{Q_TEXT}
-          </p>
-        </div>
-      </div>
-
-      {/* Answer */}
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12, overflow: "hidden" }}>
-        <span style={{
-          fontFamily: FONT_MONO,
-          fontSize: 11,
-          fontWeight: 700,
-          minWidth: 22,
-          flexShrink: 0,
-          color: "#007060",
-          letterSpacing: "0.1em",
-          textTransform: "uppercase",
-        }}>J.</span>
-        <p style={{
-          fontFamily: FONT_MAIN,
-          fontSize: 13,
-          fontWeight: 400,
-          lineHeight: 1.5,
-          color: "#2a2d3a",
-          overflow: "hidden",
-          whiteSpace: "nowrap",
-          textOverflow: "ellipsis",
-          margin: 0,
-          flex: 1,
-        }}>
-          {A_TEXT}
-        </p>
-      </div>
-
+    <>
       <style>{`
-        @keyframes qa-scroll {
-          0%   { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
+        .qao-wrap {
+          position: absolute;
+          bottom: 20px; left: 20px; right: 20px;
+          z-index: 20;
+          display: flex;
+          align-items: stretch;
+          overflow: hidden;
+          background: rgba(255,255,255,0.96);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border-radius: 4px;
+          box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+        }
+        .qao-tab {
+          background: #EE1C25;
+          padding: 14px 24px 14px 18px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          flex-shrink: 0;
+          clip-path: polygon(0 0, 100% 0, 88% 100%, 0% 100%);
+        }
+        .qao-tab-sub {
+          font-family: var(--font-mono);
+          font-size: 9px;
+          font-weight: 800;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+          color: #fff;
+          margin-bottom: 3px;
+        }
+        .qao-tab-name {
+          font-family: var(--font-display);
+          font-size: 18px;
+          font-weight: 800;
+          font-style: italic;
+          letter-spacing: -0.02em;
+          text-transform: uppercase;
+          color: #fff;
+          text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .qao-cols {
+          flex: 1;
+          display: flex;
+          align-items: stretch;
+          padding: 14px 20px;
+          gap: 20px;
+          transition: opacity 0.45s ease, transform 0.45s ease;
+        }
+        .qao-col {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+        }
+        .qao-label-s {
+          font-family: var(--font-mono);
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+          color: #EE1C25;
+          margin-bottom: 6px;
+          text-shadow: 0 0 12px rgba(238,28,37,0.4);
+        }
+        .qao-label-j {
+          font-family: var(--font-mono);
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+          color: #373d92;
+          margin-bottom: 6px;
+          text-shadow: 0 0 12px rgba(55,61,146,0.35);
+        }
+        .qao-question {
+          font-family: var(--font-display);
+          font-size: 13px;
+          font-weight: 800;
+          font-style: italic;
+          line-height: 1.25;
+          letter-spacing: -0.01em;
+          color: #0d0f1a;
+          text-transform: uppercase;
+          margin: 0;
+          overflow: hidden;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+        }
+        .qao-answer {
+          font-family: var(--font-display);
+          font-size: 13px;
+          font-weight: 800;
+          font-style: italic;
+          line-height: 1.25;
+          letter-spacing: -0.01em;
+          color: #1b1f3a;
+          text-transform: uppercase;
+          margin: 0;
+          overflow: hidden;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
         }
       `}</style>
-    </div>
+
+      <div className="qao-wrap">
+        <div className="qao-tab">
+          <span className="qao-tab-sub">Tanya lah</span>
+          <span className="qao-tab-name">Onn</span>
+        </div>
+
+        <div
+          className="qao-cols"
+          style={{
+            opacity: visible ? 1 : 0,
+            transform: visible ? "translateY(0)" : "translateY(5px)",
+          }}
+        >
+          <div className="qao-col">
+            <span className="qao-label-s">Soalan</span>
+            <p className="qao-question">{qa.q}</p>
+          </div>
+
+          <div className="qao-col">
+            <span className="qao-label-j">Jawapan</span>
+            <p className="qao-answer">{qa.a}</p>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
