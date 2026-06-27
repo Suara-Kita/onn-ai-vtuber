@@ -54,14 +54,42 @@ export default function VRMViewer() {
     let blinkPhase    = 0;
     let breatheTime   = 0;
 
+    // Talking state — triggered by apizz:talking CustomEvent
+    let isTalking    = false;
+    let talkTime     = 0;
+    let talkDuration = 0;
+
+    const onTalking = (e: Event) => {
+      const detail = (e as CustomEvent<{ duration?: number }>).detail;
+      isTalking    = true;
+      talkTime     = 0;
+      talkDuration = detail?.duration ?? 28;
+    };
+    window.addEventListener("apizz:talking", onTalking);
+
+    // Check if an event fired before this listener was registered (race condition:
+    // LeftPanel's initial poll can dispatch the event before VRMViewer mounts)
+    const g = globalThis as Record<string, unknown>;
+    const talkUntil = (g.__apizzTalkUntil as number) ?? 0;
+    const remaining = (talkUntil - Date.now()) / 1000;
+    if (remaining > 0) {
+      isTalking    = true;
+      talkTime     = Math.max(0, 28 - remaining);
+      talkDuration = 28;
+    }
+
     // Bone refs
     let leftUpperArm:  THREE.Object3D | null = null;
     let rightUpperArm: THREE.Object3D | null = null;
     let leftLowerArm:  THREE.Object3D | null = null;
     let rightLowerArm: THREE.Object3D | null = null;
+    let spine:         THREE.Object3D | null = null;
+    let hips:          THREE.Object3D | null = null;
 
     // Load VRM
     const loader = new GLTFLoader();
+    // ngrok free tier intercepts XHR with an HTML warning page; this header bypasses it
+    loader.setRequestHeader({ "ngrok-skip-browser-warning": "ngrok-skip-browser-warning" });
     loader.register((parser) => new VRMLoaderPlugin(parser));
     loader.load(
       "/models/apizz.vrm",
@@ -77,6 +105,8 @@ export default function VRMViewer() {
           rightUpperArm = vrm.humanoid.getNormalizedBoneNode("rightUpperArm");
           leftLowerArm  = vrm.humanoid.getNormalizedBoneNode("leftLowerArm");
           rightLowerArm = vrm.humanoid.getNormalizedBoneNode("rightLowerArm");
+          spine         = vrm.humanoid.getNormalizedBoneNode("spine");
+          hips          = vrm.humanoid.getNormalizedBoneNode("hips");
         }
       },
       undefined,
@@ -90,18 +120,82 @@ export default function VRMViewer() {
       if (vrm) {
         vrm.update(delta);
 
-        // Arms straight down
-        if (leftUpperArm)  { leftUpperArm.rotation.z  =  Math.PI / 2; leftUpperArm.rotation.x  = 0; }
-        if (rightUpperArm) { rightUpperArm.rotation.z = -Math.PI / 2; rightUpperArm.rotation.x = 0; }
-        if (leftLowerArm)  { leftLowerArm.rotation.x  = 0; leftLowerArm.rotation.z  = 0; }
-        if (rightLowerArm) { rightLowerArm.rotation.x = 0; rightLowerArm.rotation.z = 0; }
-
         breatheTime += delta;
-        if (vrm.humanoid) {
-          const chest = vrm.humanoid.getNormalizedBoneNode("chest");
-          if (chest) chest.rotation.x = Math.sin(breatheTime * 0.8) * 0.015;
-          const neck = vrm.humanoid.getNormalizedBoneNode("neck");
-          if (neck) neck.rotation.x = Math.sin(breatheTime * 0.3) * 0.008;
+        const t = breatheTime;
+
+        if (isTalking) {
+          talkTime += delta;
+          if (talkTime >= talkDuration) isTalking = false;
+
+          const tk = talkTime;
+          if (vrm.humanoid) {
+            const neck = vrm.humanoid.getNormalizedBoneNode("neck");
+            if (neck) {
+              neck.rotation.x = Math.sin(t * 0.3) * 0.008 + Math.sin(tk * 2.0) * 0.12;
+              neck.rotation.y = Math.sin(tk * 0.8) * 0.18;
+              neck.rotation.z = Math.sin(tk * 0.6) * 0.04;
+            }
+            const chest = vrm.humanoid.getNormalizedBoneNode("chest");
+            if (chest) {
+              chest.rotation.x = Math.sin(t * 0.8) * 0.02 + Math.sin(tk * 1.2) * 0.04;
+              chest.rotation.y = Math.sin(tk * 0.5) * 0.07;
+            }
+            if (spine) {
+              spine.rotation.x = Math.sin(t * 0.8) * 0.01;
+              spine.rotation.y = Math.sin(tk * 0.4) * 0.04;
+            }
+            // Right arm raises and gestures clearly
+            if (rightUpperArm) {
+              rightUpperArm.rotation.z = -Math.PI / 2 + 0.35 + Math.sin(tk * 1.1) * 0.25;
+              rightUpperArm.rotation.x = Math.sin(tk * 0.9) * 0.22;
+            }
+            if (rightLowerArm) {
+              rightLowerArm.rotation.x = 0.3 + Math.sin(tk * 1.4) * 0.22;
+            }
+            // Left arm — slight forward lean during talking
+            if (leftUpperArm) {
+              leftUpperArm.rotation.z  =  Math.PI / 2 - 0.08;
+              leftUpperArm.rotation.x  = Math.sin(tk * 0.7) * 0.05;
+            }
+            if (leftLowerArm) { leftLowerArm.rotation.x = 0.1; leftLowerArm.rotation.z = 0; }
+          }
+        } else {
+          // ── Idle animation ─────────────────────────────────────────────────
+          // Layered sines at prime-ish frequencies to prevent repeating loops
+          if (vrm.humanoid) {
+            // Breathing drives chest and spine
+            const breathe = Math.sin(t * 0.85) * 0.028 + Math.sin(t * 1.7) * 0.006;
+            const chest = vrm.humanoid.getNormalizedBoneNode("chest");
+            if (chest) {
+              chest.rotation.x = breathe;
+              chest.rotation.y = Math.sin(t * 0.19) * 0.018;
+            }
+            if (spine) {
+              spine.rotation.x = breathe * 0.5;
+              spine.rotation.y = Math.sin(t * 0.17) * 0.012;
+            }
+            if (hips) {
+              hips.rotation.z = Math.sin(t * 0.23) * 0.008;
+            }
+            // Head wanders slowly — looks natural, not robotic
+            const neck = vrm.humanoid.getNormalizedBoneNode("neck");
+            if (neck) {
+              neck.rotation.x = Math.sin(t * 0.31) * 0.055 + breathe * 0.3;
+              neck.rotation.y = Math.sin(t * 0.23) * 0.14 + Math.sin(t * 0.07) * 0.06;
+              neck.rotation.z = Math.sin(t * 0.17) * 0.035;
+            }
+          }
+          // Arms hang with a very small oscillation — not rigid sticks
+          if (leftUpperArm) {
+            leftUpperArm.rotation.z  =  Math.PI / 2 - 0.05;
+            leftUpperArm.rotation.x  = Math.sin(t * 0.37) * 0.025;
+          }
+          if (leftLowerArm)  { leftLowerArm.rotation.x = 0.05; leftLowerArm.rotation.z = 0; }
+          if (rightUpperArm) {
+            rightUpperArm.rotation.z = -Math.PI / 2 + 0.05;
+            rightUpperArm.rotation.x = Math.sin(t * 0.41) * 0.025;
+          }
+          if (rightLowerArm) { rightLowerArm.rotation.x = 0.05; rightLowerArm.rotation.z = 0; }
         }
 
         // Blink
@@ -137,6 +231,7 @@ export default function VRMViewer() {
     return () => {
       cancelAnimationFrame(animFrameId);
       window.removeEventListener("resize", handleResize);
+      window.removeEventListener("apizz:talking", onTalking);
       renderer.dispose();
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement);

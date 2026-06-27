@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { QAEntry } from "@/app/job/qa-recent/route";
 
-const QA_DATA = [
+const DEFAULT_QA = [
   {
     q: "Apakah langkah kerajaan memastikan projek infrastruktur Sekijang P.141 disiapkan mengikut jadual?",
     a: "Kerajaan memperuntukkan RM45 juta dengan pemantauan bulanan JKR dan penglibatan komuniti tempatan dalam perancangan.",
@@ -22,21 +23,111 @@ const QA_DATA = [
 ];
 
 export default function QAOverlay() {
+  const [pool, setPool] = useState<Array<{ job_id?: string; q: string; a: string }>>(DEFAULT_QA);
   const [idx, setIdx] = useState(0);
   const [visible, setVisible] = useState(true);
+  const [liveQA, setLiveQA] = useState<{ q: string; a: string } | null>(null);
+  const cycleTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const delayTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // waits for LeftPanel to finish
+  const liveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);  // clears liveQA after 30s
+  const poolRefresh = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Tracks job_ids already shown as liveQA — excluded from pool so they don't re-appear
+  const shownJobIds = useRef<Set<string>>(new Set());
 
+  // Fetch recent Q&A from Redis and update the rotation pool,
+  // excluding entries already shown as live (prevents 3-minute re-cycling)
+  const refreshPool = useCallback(async () => {
+    try {
+      const res = await fetch("/job/qa-recent");
+      if (!res.ok) return;
+      const data = (await res.json()) as { entries: QAEntry[] };
+      const unseen = data.entries.filter((e) => !shownJobIds.current.has(e.job_id));
+      if (unseen.length > 0) {
+        setPool(unseen.map((e) => ({ job_id: e.job_id, q: e.query, a: e.script })));
+        setIdx(0);
+      } else {
+        setPool(DEFAULT_QA);
+        setIdx(0);
+      }
+    } catch {
+      // Redis unavailable — keep existing pool
+    }
+  }, []);
+
+  // Initial pool load + refresh every 30s
   useEffect(() => {
-    const timer = setInterval(() => {
+    refreshPool();
+    poolRefresh.current = setInterval(refreshPool, 30_000);
+    return () => {
+      if (poolRefresh.current) clearInterval(poolRefresh.current);
+    };
+  }, [refreshPool]);
+
+  // Rotate through pool every 7s when no live job
+  useEffect(() => {
+    cycleTimer.current = setInterval(() => {
+      if (liveQA) return;
       setVisible(false);
       setTimeout(() => {
-        setIdx((i) => (i + 1) % QA_DATA.length);
+        setIdx((i) => (i + 1) % pool.length);
         setVisible(true);
       }, 500);
     }, 7000);
-    return () => clearInterval(timer);
-  }, []);
+    return () => {
+      if (cycleTimer.current) clearInterval(cycleTimer.current);
+    };
+  }, [liveQA, pool.length]);
 
-  const qa = QA_DATA[idx];
+  // Listen for live jobs via SSE.
+  // Sequence: LeftPanel shows the answer first (0–30s), then QAOverlay pins it (30–60s).
+  useEffect(() => {
+    const es = new EventSource("/job/events");
+    es.onmessage = (e) => {
+      const data = JSON.parse(e.data) as {
+        job_id?: string;
+        query?: string;
+        script?: string;
+        idle?: boolean;
+      };
+      if (data.idle) {
+        if (delayTimer.current) clearTimeout(delayTimer.current);
+        if (liveTimer.current) clearTimeout(liveTimer.current);
+        setLiveQA(null);
+        refreshPool();
+        return;
+      }
+      if (!data.job_id) return;
+
+      const fresh = { q: data.query ?? "", a: data.script ?? "" };
+
+      // Exclude from pool rotation immediately — it will appear as liveQA instead
+      shownJobIds.current.add(data.job_id);
+
+      // Cancel any pending delay/clear from a previous job
+      if (delayTimer.current) clearTimeout(delayTimer.current);
+      if (liveTimer.current) clearTimeout(liveTimer.current);
+
+      // Wait for LeftPanel's 30s display window to finish, then show in QAOverlay
+      delayTimer.current = setTimeout(() => {
+        setVisible(false);
+        setTimeout(() => {
+          setLiveQA(fresh);
+          setVisible(true);
+          liveTimer.current = setTimeout(() => {
+            setLiveQA(null);
+            refreshPool();
+          }, 30_000);
+        }, 500);
+      }, 30_000);
+    };
+    return () => {
+      es.close();
+      if (delayTimer.current) clearTimeout(delayTimer.current);
+      if (liveTimer.current) clearTimeout(liveTimer.current);
+    };
+  }, [refreshPool]);
+
+  const qa = liveQA ?? pool[idx] ?? DEFAULT_QA[0];
 
   return (
     <>
