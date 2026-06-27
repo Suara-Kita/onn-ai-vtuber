@@ -29,6 +29,7 @@ function parseScript(text: string): string[] {
 
 export default function LeftPanel() {
   const [liveSlide, setLiveSlide] = useState<LiveSlide | null>(null);
+  const [lastSlide, setLastSlide] = useState<LiveSlide | null>(null);
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastJobId = useRef<string | null>(null);
 
@@ -36,12 +37,14 @@ export default function LeftPanel() {
     if (entry.job_id === lastJobId.current) return;
     lastJobId.current = entry.job_id;
     if (clearTimer.current) clearTimeout(clearTimer.current);
-    setLiveSlide({ job_id: entry.job_id, query: entry.query, script: entry.script });
+    const slide = { job_id: entry.job_id, query: entry.query, script: entry.script };
+    setLiveSlide(slide);
+    setLastSlide(slide);
     // Signal VRM model to animate while LeftPanel is displaying the answer.
     // globalThis persists the intent so VRMViewer can pick it up even if it
     // mounts after the event fires (dynamic import race condition).
-    (globalThis as Record<string, unknown>).__apizzTalkUntil = Date.now() + 28_000;
-    window.dispatchEvent(new CustomEvent("apizz:talking", { detail: { duration: 28 } }));
+    (globalThis as Record<string, unknown>).__tanyalahOnnTalkUntil = Date.now() + 28_000;
+    window.dispatchEvent(new CustomEvent("tanyalah-onn:talking", { detail: { duration: 28 } }));
     clearTimer.current = setTimeout(() => setLiveSlide(null), 30_000);
   }, []);
 
@@ -60,8 +63,8 @@ export default function LeftPanel() {
         lastJobId.current = null;
         if (clearTimer.current) clearTimeout(clearTimer.current);
         setLiveSlide(null);
-        (globalThis as Record<string, unknown>).__apizzTalkUntil = 0;
-        window.dispatchEvent(new CustomEvent("apizz:idle"));
+        (globalThis as Record<string, unknown>).__tanyalahOnnTalkUntil = 0;
+        window.dispatchEvent(new CustomEvent("tanyalah-onn:idle"));
         return;
       }
       if (!data.job_id) return;
@@ -93,9 +96,10 @@ export default function LeftPanel() {
     return () => clearInterval(interval);
   }, [applySlide]);
 
-  const headline = liveSlide?.query ?? DEFAULT_HEADLINE;
-  const bullets = liveSlide ? parseScript(liveSlide.script) : DEFAULT_BULLETS;
-  const sectionLabel = liveSlide ? "Soalan Langsung" : "Laporan Hari Ini";
+  const displaySlide = liveSlide ?? lastSlide;
+  const headline = displaySlide?.query ?? DEFAULT_HEADLINE;
+  const bullets = displaySlide ? parseScript(displaySlide.script) : DEFAULT_BULLETS;
+  const sectionLabel = liveSlide ? "Soalan Langsung" : lastSlide ? "Soalan Terakhir" : "Laporan Hari Ini";
 
   return (
     <div className="left-panel">

@@ -7,12 +7,20 @@ import { generateScript } from "@/lib/llm";
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
-  if (!body?.query || !body?.user_id) {
+
+  let query: string = body?.query ?? "";
+  let user_id: string = body?.user_id ?? "";
+
+  if (!query.trim()) {
+    const teras = Math.floor(Math.random() * 6) + 1;
+    query = `Apakah isi utama Teras ${teras} sahaja dalam manifesto Johor PRN 2026?`;
+    user_id = user_id.trim() || "system";
+  }
+
+  if (!user_id.trim()) {
     try { triggerIdle(); } catch { /* stale subscriber on hot reload */ }
     return Response.json({ idle: true });
   }
-
-  const { query, user_id } = body as { query: string; user_id: string };
 
   // Query RAG KB and generate TTS script in parallel
   const [rag_answer, script] = await Promise.all([

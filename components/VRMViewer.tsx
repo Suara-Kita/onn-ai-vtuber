@@ -54,7 +54,7 @@ export default function VRMViewer() {
     let blinkPhase    = 0;
     let breatheTime   = 0;
 
-    // Talking state — triggered by apizz:talking CustomEvent
+    // Talking state — triggered by tanyalah-onn:talking CustomEvent
     let isTalking    = false;
     let talkTime     = 0;
     let talkDuration = 0;
@@ -65,12 +65,12 @@ export default function VRMViewer() {
       talkTime     = 0;
       talkDuration = detail?.duration ?? 28;
     };
-    window.addEventListener("apizz:talking", onTalking);
+    window.addEventListener("tanyalah-onn:talking", onTalking);
 
     // Check if an event fired before this listener was registered (race condition:
     // LeftPanel's initial poll can dispatch the event before VRMViewer mounts)
     const g = globalThis as Record<string, unknown>;
-    const talkUntil = (g.__apizzTalkUntil as number) ?? 0;
+    const talkUntil = (g.__tanyalahOnnTalkUntil as number) ?? 0;
     const remaining = (talkUntil - Date.now()) / 1000;
     if (remaining > 0) {
       isTalking    = true;
@@ -92,7 +92,7 @@ export default function VRMViewer() {
     loader.setRequestHeader({ "ngrok-skip-browser-warning": "ngrok-skip-browser-warning" });
     loader.register((parser) => new VRMLoaderPlugin(parser));
     loader.load(
-      "/models/apizz.vrm",
+      "/models/tanyalah-onn.vrm",
       (gltf) => {
         vrm = gltf.userData.vrm as VRM;
         VRMUtils.removeUnnecessaryVertices(vrm.scene);
@@ -231,7 +231,7 @@ export default function VRMViewer() {
     return () => {
       cancelAnimationFrame(animFrameId);
       window.removeEventListener("resize", handleResize);
-      window.removeEventListener("apizz:talking", onTalking);
+      window.removeEventListener("tanyalah-onn:talking", onTalking);
       renderer.dispose();
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement);

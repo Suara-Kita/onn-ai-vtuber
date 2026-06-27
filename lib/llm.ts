@@ -12,10 +12,13 @@ PERATURAN WAJIB UNTUK SKRIP TTS:
 5. Panjang skrip MESTI tepat lapan puluh tiga patah perkataan — kira-kira enam ratus enam aksara. Lebih daripada itu menyebabkan audio terpotong di tengah ayat, kurang daripada itu menyebabkan kesunyian di hujung audio
 6. Bahasa mudah dan ringkas — elakkan istilah teknikal, terangkan dengan cara yang boleh difahami oleh orang awam
 7. Tulis dalam Bahasa Melayu percakapan yang natural dan mesra
+8. Fokus HANYA pada satu topik atau satu teras yang disebutkan dalam soalan — JANGAN bincangkan teras lain atau topik di luar soalan
 
 Balas dengan teks skrip SAHAJA tanpa sebarang label, tajuk atau penjelasan tambahan.`;
 
 export async function generateScript(query: string): Promise<string> {
+  const userContent = `Soalan: ${query}`;
+
   const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
     method: "POST",
     headers: {
@@ -27,7 +30,7 @@ export async function generateScript(query: string): Promise<string> {
       max_tokens: 3000,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `Soalan: ${query}` },
+        { role: "user", content: userContent },
       ],
     }),
   });
