@@ -16,6 +16,7 @@ function setupResponse(mockFn: ReturnType<typeof vi.fn>, body: string) {
   mockFn.mockImplementation((_opts: unknown, callback: (res: unknown) => void) => {
     const req = {
       write: vi.fn(),
+      setTimeout: vi.fn(),
       end: vi.fn().mockImplementation(() => {
         const res = {
           on: vi.fn((event: string, cb: (chunk?: Buffer) => void) => {
@@ -37,6 +38,7 @@ function setupError(mockFn: ReturnType<typeof vi.fn>, error: Error) {
     const errorHandlers: Record<string, (err: Error) => void> = {};
     const req = {
       write: vi.fn(),
+      setTimeout: vi.fn(),
       end: vi.fn().mockImplementation(() => {
         errorHandlers["error"]?.(error);
       }),

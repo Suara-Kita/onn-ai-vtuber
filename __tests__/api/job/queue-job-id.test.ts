@@ -38,6 +38,7 @@ const SAMPLE_ENTRY = {
   script: "JS-SEZ ialah...",
   rag_answer: "Jawatan Sel Ekonomi...",
   qa_answer: "Zon ekonomi khas di Johor",
+  panel_analysis: "Pelaburan RM88 bilion\nMelibatkan kawasan Iskandar Puteri\nSasaran dua puluh tahun",
   created_at: new Date().toISOString(),
 };
 
@@ -171,6 +172,25 @@ describe("POST /job/queue/[job_id]", () => {
       await POST(...makeRequest("abc-123"));
       expect(mockCreateJob).toHaveBeenCalledWith(
         expect.objectContaining({ rag_answer: "" })
+      );
+    });
+
+    it("rehydrates panel_analysis from Redis entry", async () => {
+      mockZrangebyscore.mockResolvedValue([JSON.stringify(SAMPLE_ENTRY)]);
+      await POST(...makeRequest("abc-123"));
+      expect(mockCreateJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          panel_analysis: "Pelaburan RM88 bilion\nMelibatkan kawasan Iskandar Puteri\nSasaran dua puluh tahun",
+        })
+      );
+    });
+
+    it("fills missing panel_analysis with empty string on rehydration", async () => {
+      const entryNoPanel = { ...SAMPLE_ENTRY, panel_analysis: undefined };
+      mockZrangebyscore.mockResolvedValue([JSON.stringify(entryNoPanel)]);
+      await POST(...makeRequest("abc-123"));
+      expect(mockCreateJob).toHaveBeenCalledWith(
+        expect.objectContaining({ panel_analysis: "" })
       );
     });
   });

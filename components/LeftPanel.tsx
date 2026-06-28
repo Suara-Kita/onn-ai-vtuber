@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import type { QAEntry } from "@/app/job/qa-recent/route";
 
 const DEFAULT_HEADLINE = "Apa yang anda ingin tahu hari ini?";
 
@@ -16,6 +15,7 @@ interface LiveSlide {
   query: string;
   script: string;
   qa_answer?: string;
+  panel_analysis?: string;
 }
 
 function stripListMarker(s: string): string {
@@ -186,10 +186,10 @@ export default function LeftPanel() {
   const [liveSlide, setLiveSlide] = useState<LiveSlide | null>(null);
   const lastJobId = useRef<string | null>(null);
 
-  const applySlide = useCallback((entry: { job_id: string; query: string; script: string; qa_answer?: string }) => {
+  const applySlide = useCallback((entry: { job_id: string; query: string; script: string; qa_answer?: string; panel_analysis?: string }) => {
     if (entry.job_id === lastJobId.current) return;
     lastJobId.current = entry.job_id;
-    const slide = { job_id: entry.job_id, query: entry.query, script: entry.script, qa_answer: entry.qa_answer };
+    const slide = { job_id: entry.job_id, query: entry.query, script: entry.script, qa_answer: entry.qa_answer, panel_analysis: entry.panel_analysis };
     setLiveSlide(slide);
     // Signal VRM model to animate while LeftPanel is displaying the answer.
     // globalThis persists the intent so VRMViewer can pick it up even if it
@@ -207,6 +207,7 @@ export default function LeftPanel() {
         query?: string;
         script?: string;
         qa_answer?: string;
+        panel_analysis?: string;
         forced?: boolean;
         idle?: boolean;
       };
@@ -220,34 +221,25 @@ export default function LeftPanel() {
       if (!data.job_id) return;
       // forced=true comes from /job/queue/:id — reset dedup so animation always re-fires
       if (data.forced) lastJobId.current = null;
-      applySlide({ job_id: data.job_id, query: data.query ?? "", script: data.script ?? "", qa_answer: data.qa_answer ?? "" });
+      applySlide({ job_id: data.job_id, query: data.query ?? "", script: data.script ?? "", qa_answer: data.qa_answer ?? "", panel_analysis: data.panel_analysis ?? "" });
     };
     return () => es.close();
-  }, [applySlide]);
-
-  // Polling fallback — picks up latest entry from Redis every 5s
-  useEffect(() => {
-    const poll = async () => {
-      try {
-        const res = await fetch("/job/qa-recent");
-        if (!res.ok) return;
-        const data = (await res.json()) as { entries: QAEntry[] };
-        if (data.entries.length > 0) {
-          const latest = data.entries[0];
-          applySlide({ job_id: latest.job_id, query: latest.query, script: latest.script, qa_answer: latest.qa_answer });
-        }
-      } catch { /* Redis unavailable */ }
-    };
-    poll();
-    const interval = setInterval(poll, 5_000);
-    return () => clearInterval(interval);
   }, [applySlide]);
 
   const headline = liveSlide?.query ?? DEFAULT_HEADLINE;
   const sectionLabel = liveSlide ? "Soalan Langsung" : "Laporan Hari Ini";
 
   const bullets = liveSlide
-    ? (parseScript(liveSlide.script).length > 0 ? parseScript(liveSlide.script) : DEFAULT_BULLETS)
+    ? (() => {
+        const fromAnalysis = (liveSlide.panel_analysis ?? "")
+          .split("\n")
+          .map((s) => stripListMarker(s.trim()))
+          .filter(Boolean)
+          .slice(0, 3);
+        if (fromAnalysis.length > 0) return fromAnalysis;
+        const fromScript = parseScript(liveSlide.script);
+        return fromScript.length > 0 ? fromScript : DEFAULT_BULLETS;
+      })()
     : DEFAULT_BULLETS;
 
   return (

@@ -19,6 +19,7 @@ function makeJob(overrides: Partial<Job> = {}): Job {
     user_id: "user-1",
     rag_answer: "Jawapan dari pangkalan pengetahuan",
     qa_answer: "",
+    panel_analysis: "",
     created_at: new Date("2026-06-27T00:00:00Z"),
     ...overrides,
   };
@@ -84,9 +85,9 @@ describe("triggerJob", () => {
     triggerJob(job.job_id);
 
     expect(cb1).toHaveBeenCalledOnce();
-    expect(cb1).toHaveBeenCalledWith(job);
+    expect(cb1).toHaveBeenCalledWith(job, false);
     expect(cb2).toHaveBeenCalledOnce();
-    expect(cb2).toHaveBeenCalledWith(job);
+    expect(cb2).toHaveBeenCalledWith(job, false);
   });
 
   it("does not call subscribers when job_id is missing", async () => {
@@ -127,7 +128,7 @@ describe("subscribe / unsubscribe", () => {
 
     triggerJob(job.job_id);
     expect(cb1).not.toHaveBeenCalled();
-    expect(cb2).toHaveBeenCalledWith(job);
+    expect(cb2).toHaveBeenCalledWith(job, false);
   });
 
   it("adding the same callback reference twice only fires it once (Set deduplication)", async () => {

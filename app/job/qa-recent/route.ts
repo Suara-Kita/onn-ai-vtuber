@@ -6,6 +6,7 @@ export interface QAEntry {
   script: string;
   rag_answer: string;
   qa_answer: string;
+  panel_analysis: string;
   created_at: string;
 }
 

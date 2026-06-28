@@ -20,7 +20,7 @@ export async function GET() {
       // Subscribe to job triggers — auto-fired by POST /job/query or /job/queue/:id
       const unsubscribe = subscribe((job, forced) => {
         const payload = job
-          ? JSON.stringify({ job_id: job.job_id, script: job.script, query: job.query, user_id: job.user_id, rag_answer: job.rag_answer, qa_answer: job.qa_answer, forced })
+          ? JSON.stringify({ job_id: job.job_id, script: job.script, query: job.query, user_id: job.user_id, rag_answer: job.rag_answer, qa_answer: job.qa_answer, panel_analysis: job.panel_analysis, forced })
           : JSON.stringify({ idle: true });
         send(`data: ${payload}\n\n`);
       });

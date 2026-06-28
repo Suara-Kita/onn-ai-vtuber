@@ -58,12 +58,17 @@ export default function VRMViewer() {
     let isTalking    = false;
     let talkTime     = 0;
     let talkDuration = 0;
+    let talkDelayTimer: ReturnType<typeof setTimeout> | null = null;
 
     const onTalking = (e: Event) => {
       const detail = (e as CustomEvent<{ duration?: number }>).detail;
-      isTalking    = true;
-      talkTime     = 0;
-      talkDuration = detail?.duration ?? 30;
+      const duration = detail?.duration ?? 30;
+      if (talkDelayTimer) clearTimeout(talkDelayTimer);
+      talkDelayTimer = setTimeout(() => {
+        isTalking    = true;
+        talkTime     = 0;
+        talkDuration = duration;
+      }, 5000);
     };
     window.addEventListener("tanyalah-onn:talking", onTalking);
 
@@ -239,6 +244,7 @@ export default function VRMViewer() {
 
     return () => {
       cancelAnimationFrame(animFrameId);
+      if (talkDelayTimer) clearTimeout(talkDelayTimer);
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("tanyalah-onn:talking", onTalking);
       renderer.dispose();

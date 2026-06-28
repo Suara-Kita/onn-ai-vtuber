@@ -20,7 +20,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Apizz — Pemberita AI Suara Kita",
+  title: "Tanyalah Onn — Pemberita AI Suara Kita",
   description: "AI VTuber news reporter for Sekijang constituency",
 };
 

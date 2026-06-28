@@ -46,6 +46,7 @@ export async function POST(
     user_id: "remote",
     rag_answer: entry.rag_answer ?? "",
     qa_answer: entry.qa_answer ?? "",
+    panel_analysis: entry.panel_analysis ?? "",
     created_at: new Date(entry.created_at),
   });
 

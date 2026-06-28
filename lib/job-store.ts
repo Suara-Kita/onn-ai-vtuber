@@ -5,6 +5,7 @@ export interface Job {
   user_id: string;
   rag_answer: string;
   qa_answer: string;
+  panel_analysis: string;
   created_at: Date;
 }
 
