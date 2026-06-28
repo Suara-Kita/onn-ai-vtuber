@@ -131,9 +131,14 @@ describe("SYSTEM_PROMPT TTS constraints", () => {
   });
 
   it("applies to both real queries and manifesto fallback — same prompt, no branching", () => {
-    // generateScript is the single entry point for all script generation paths;
-    // SYSTEM_PROMPT is always used regardless of whether it's a manifesto or KB query.
     expect(SYSTEM_PROMPT).toContain("PERATURAN WAJIB UNTUK SKRIP TTS");
+  });
+
+  it("ends with a complete sentence instruction, not a word-count reminder", () => {
+    const lines = SYSTEM_PROMPT.trim().split("\n");
+    const lastLine = lines[lines.length - 1];
+    expect(lastLine).toContain("ayat yang lengkap");
+    expect(lastLine).not.toMatch(/\(83\)/);
   });
 });
 

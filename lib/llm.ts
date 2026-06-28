@@ -10,16 +10,15 @@ Tugas anda: ringkaskan jawapan kepada soalan yang diberikan dalam Bahasa Melayu 
 ⚠️ HAD MUTLAK: LAPAN PULUH TIGA (83) PATAH PERKATAAN SAHAJA. Lebih = audio terpotong. Kurang = kesunyian. Kira setiap patah perkataan sebelum menghantar.
 
 PERATURAN WAJIB UNTUK SKRIP TTS:
-1. BILANGAN PATAH PERKATAAN MESTI TEPAT LAPAN PULUH TIGA (83) — tidak lebih, tidak kurang. Ini adalah had keras. Kira semula sebelum balas.
-2. TIADA nombor digit — ejakan semua nombor dalam Bahasa Melayu. Contoh: "dua ribu" bukan "2,000", "lapan perpuluhan dua" bukan "8.2", "empat puluh lima juta" bukan "45 juta"
-3. TIADA titik "." — guna perkataan "perpuluhan" untuk perpuluhan
-4. TIADA tanda kurung "()" langsung
-5. TIADA singkatan atau akronim — ejakan SEMUA dalam perkataan penuh tanpa pengecualian. Contoh: "Jabatan Kerja Raya" bukan "JKR", "Ringgit Malaysia" bukan "RM", "Zon Ekonomi Khas Johor Singapura" bukan "JS-SEZ", "Bantuan Kasih Johor" bukan "BKJ". Risiko bunyi TTS rosak terlalu tinggi
-6. Bahasa mudah dan ringkas — elakkan istilah teknikal, terangkan dengan cara yang boleh difahami oleh orang awam
-7. Tulis dalam Bahasa Melayu percakapan yang natural dan mesra
-8. Fokus HANYA pada satu topik atau satu teras yang disebutkan dalam soalan — JANGAN bincangkan teras lain atau topik di luar soalan
+1. TIADA nombor digit — ejakan semua nombor dalam Bahasa Melayu. Contoh: "dua ribu" bukan "2,000", "lapan perpuluhan dua" bukan "8.2", "empat puluh lima juta" bukan "45 juta"
+2. TIADA titik "." — guna perkataan "perpuluhan" untuk perpuluhan
+3. TIADA tanda kurung "()" langsung
+4. TIADA singkatan atau akronim — ejakan SEMUA dalam perkataan penuh tanpa pengecualian. Contoh: "Jabatan Kerja Raya" bukan "JKR", "Ringgit Malaysia" bukan "RM", "Zon Ekonomi Khas Johor Singapura" bukan "JS-SEZ", "Bantuan Kasih Johor" bukan "BKJ". Risiko bunyi TTS rosak terlalu tinggi
+5. Bahasa mudah dan ringkas — elakkan istilah teknikal, terangkan dengan cara yang boleh difahami oleh orang awam
+6. Tulis dalam Bahasa Melayu percakapan yang natural dan mesra
+7. Fokus HANYA pada satu topik atau satu teras yang disebutkan dalam soalan — JANGAN bincangkan teras lain atau topik di luar soalan
 
-Balas dengan teks skrip SAHAJA tanpa sebarang label, tajuk atau penjelasan tambahan. Semak bilangan patah perkataan: mesti lapan puluh tiga (83).`;
+Balas dengan teks skrip SAHAJA, tanpa label, tajuk, atau penjelasan tambahan. Pastikan skrip berakhir dengan ayat yang lengkap dan bermakna.`;
 
 // Hard cap: trim to at most `limit` whitespace-separated tokens.
 // The LLM prompt requests exactly SCRIPT_WORD_LIMIT words but models occasionally
