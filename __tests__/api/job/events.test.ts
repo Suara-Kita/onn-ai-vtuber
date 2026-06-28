@@ -22,6 +22,7 @@ function makeJob(overrides: Partial<Job> = {}): Job {
     query: "Soalan acara?",
     user_id: "u1",
     rag_answer: "Jawapan acara",
+    qa_answer: "",
     created_at: new Date("2026-06-27T00:00:00Z"),
     ...overrides,
   };

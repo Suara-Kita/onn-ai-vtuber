@@ -4,6 +4,7 @@ export interface Job {
   query: string;
   user_id: string;
   rag_answer: string;
+  qa_answer: string;
   created_at: Date;
 }
 

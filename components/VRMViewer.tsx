@@ -63,7 +63,7 @@ export default function VRMViewer() {
       const detail = (e as CustomEvent<{ duration?: number }>).detail;
       isTalking    = true;
       talkTime     = 0;
-      talkDuration = detail?.duration ?? 28;
+      talkDuration = detail?.duration ?? 30;
     };
     window.addEventListener("tanyalah-onn:talking", onTalking);
 
@@ -74,8 +74,8 @@ export default function VRMViewer() {
     const remaining = (talkUntil - Date.now()) / 1000;
     if (remaining > 0) {
       isTalking    = true;
-      talkTime     = Math.max(0, 28 - remaining);
-      talkDuration = 28;
+      talkTime     = Math.max(0, 30 - remaining);
+      talkDuration = 30;
     }
 
     // Bone refs
@@ -159,6 +159,11 @@ export default function VRMViewer() {
             }
             if (leftLowerArm) { leftLowerArm.rotation.x = 0.1; leftLowerArm.rotation.z = 0; }
           }
+          // Mouth open/close — two primes to avoid mechanical repetition
+          if (vrm.expressionManager) {
+            const mouth = Math.max(0, Math.sin(tk * 9.3) * 0.55 + Math.sin(tk * 14.7) * 0.3);
+            vrm.expressionManager.setValue(VRMExpressionPresetName.Aa, mouth);
+          }
         } else {
           // ── Idle animation ─────────────────────────────────────────────────
           // Layered sines at prime-ish frequencies to prevent repeating loops
@@ -196,6 +201,10 @@ export default function VRMViewer() {
             rightUpperArm.rotation.x = Math.sin(t * 0.41) * 0.025;
           }
           if (rightLowerArm) { rightLowerArm.rotation.x = 0.05; rightLowerArm.rotation.z = 0; }
+          // Close mouth when idle
+          if (vrm.expressionManager) {
+            vrm.expressionManager.setValue(VRMExpressionPresetName.Aa, 0);
+          }
         }
 
         // Blink

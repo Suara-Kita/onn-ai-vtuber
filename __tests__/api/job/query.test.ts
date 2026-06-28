@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 
 // vi.mock factories are hoisted — declare mocks with vi.hoisted so they're
 // available inside the factory closures before the file is executed.
-const { mockCreateJob, mockTriggerJob, mockPipeline, mockQueryRagKb, mockGenerateScript } =
+const { mockCreateJob, mockTriggerJob, mockPipeline, mockQueryRagKb, mockGenerateScript, mockSimplifyForQA } =
   vi.hoisted(() => {
     const mockPipeline = {
       zadd: vi.fn().mockReturnThis(),
@@ -16,11 +16,12 @@ const { mockCreateJob, mockTriggerJob, mockPipeline, mockQueryRagKb, mockGenerat
       mockPipeline,
       mockQueryRagKb: vi.fn(),
       mockGenerateScript: vi.fn(),
+      mockSimplifyForQA: vi.fn().mockResolvedValue("ringkasan"),
     };
   });
 
 vi.mock("@/lib/rag", () => ({ queryRagKb: mockQueryRagKb }));
-vi.mock("@/lib/llm", () => ({ generateScript: mockGenerateScript }));
+vi.mock("@/lib/llm", () => ({ generateScript: mockGenerateScript, simplifyForQA: mockSimplifyForQA }));
 vi.mock("@/lib/redis", () => ({
   redis: { pipeline: vi.fn(() => mockPipeline) },
   QA_KEY: "vroid:qa:recent",
@@ -52,34 +53,52 @@ describe("POST /job/query", () => {
     mockPipeline.exec.mockResolvedValue([[null, 1], [null, 0]]);
   });
 
-  // ── Input validation ────────────────────────────────────────────────────
+  // ── Manifesto fallback ───────────────────────────────────────────────────
 
-  describe("input validation", () => {
-    it("returns 400 when body is missing", async () => {
+  describe("manifesto fallback", () => {
+    beforeEach(() => {
+      mockGenerateScript.mockResolvedValue("Skrip manifesto.");
+    });
+
+    it("returns 200 when body is invalid JSON (manifesto fallback)", async () => {
       const req = new NextRequest("http://localhost/job/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "not-json",
       });
       const res = await POST(req);
-      expect(res.status).toBe(400);
-      const data = await res.json();
-      expect(data.error).toMatch(/query and user_id/);
+      expect(res.status).toBe(200);
     });
 
-    it("returns 400 when query is missing", async () => {
+    it("returns 200 when query is empty (manifesto fallback)", async () => {
+      const res = await POST(makeRequest({ query: "", user_id: "u1" }));
+      expect(res.status).toBe(200);
+    });
+
+    it("returns 200 when query is missing (manifesto fallback)", async () => {
       const res = await POST(makeRequest({ user_id: "u1" }));
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
     });
 
-    it("returns 400 when user_id is missing", async () => {
+    it("returns 200 and defaults user_id to anonymous when missing", async () => {
+      mockQueryRagKb.mockResolvedValue("RAG");
       const res = await POST(makeRequest({ query: "Apa projek Sekijang?" }));
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
+      expect(mockCreateJob).toHaveBeenCalledWith(
+        expect.objectContaining({ user_id: "anonymous" })
+      );
     });
 
-    it("returns 400 when body is empty object", async () => {
-      const res = await POST(makeRequest({}));
-      expect(res.status).toBe(400);
+    it("does not call queryRagKb on manifesto path", async () => {
+      await POST(makeRequest({ query: "", user_id: "u1" }));
+      expect(mockQueryRagKb).not.toHaveBeenCalled();
+    });
+
+    it("stored query is the tajuk, not the full LLM prompt", async () => {
+      await POST(makeRequest({ query: "", user_id: "u1" }));
+      const storedQuery: string = mockCreateJob.mock.calls[0][0].query;
+      expect(storedQuery).not.toMatch(/^Terangkan tentang/);
+      expect(storedQuery.length).toBeGreaterThan(0);
     });
   });
 
@@ -91,26 +110,26 @@ describe("POST /job/query", () => {
       mockGenerateScript.mockResolvedValue("Skrip TTS Sekijang lapan belas kilometer.");
     });
 
-    it("calls queryRagKb and generateScript in the same tick (parallel)", async () => {
+    it("generateScript and simplifyForQA run in parallel (not sequential)", async () => {
       const order: string[] = [];
-      mockQueryRagKb.mockImplementation(async () => {
-        order.push("rag-start");
-        await Promise.resolve();
-        order.push("rag-end");
-        return "RAG answer";
-      });
       mockGenerateScript.mockImplementation(async () => {
-        order.push("llm-start");
+        order.push("script-start");
         await Promise.resolve();
-        order.push("llm-end");
+        order.push("script-end");
         return "LLM script";
+      });
+      mockSimplifyForQA.mockImplementation(async () => {
+        order.push("simplify-start");
+        await Promise.resolve();
+        order.push("simplify-end");
+        return "ringkasan";
       });
 
       await POST(makeRequest({ query: "Soalan?", user_id: "u1" }));
 
-      // Both started before either ended (parallel, not sequential)
-      expect(order.indexOf("rag-start")).toBeLessThan(order.indexOf("llm-end"));
-      expect(order.indexOf("llm-start")).toBeLessThan(order.indexOf("rag-end"));
+      // Both started before either finished
+      expect(order.indexOf("script-start")).toBeLessThan(order.indexOf("simplify-end"));
+      expect(order.indexOf("simplify-start")).toBeLessThan(order.indexOf("script-end"));
     });
 
     it("passes the query to queryRagKb", async () => {
@@ -119,10 +138,10 @@ describe("POST /job/query", () => {
       expect(mockQueryRagKb).toHaveBeenCalledWith(q);
     });
 
-    it("passes the query to generateScript", async () => {
+    it("passes the query and rag_answer to generateScript", async () => {
       const q = "Apakah status jalan Sekijang?";
       await POST(makeRequest({ query: q, user_id: "u1" }));
-      expect(mockGenerateScript).toHaveBeenCalledWith(q);
+      expect(mockGenerateScript).toHaveBeenCalledWith(q, "Sekijang mendapat peruntukan RM45 juta.");
     });
   });
 

@@ -26,7 +26,7 @@ describe("generateScript (lib/llm)", () => {
   it("calls OpenRouter with the correct model", async () => {
     mockFetch.mockResolvedValue(openRouterResponse("Skrip ujian"));
     const { generateScript } = await import("@/lib/llm");
-    await generateScript("Soalan?");
+    await generateScript("Soalan?", "");
 
     const [url, options] = mockFetch.mock.calls[0];
     expect(url).toContain("openrouter.ai");
@@ -37,7 +37,7 @@ describe("generateScript (lib/llm)", () => {
   it("includes the system prompt in the request", async () => {
     mockFetch.mockResolvedValue(openRouterResponse("Skrip"));
     const { generateScript } = await import("@/lib/llm");
-    await generateScript("Soalan?");
+    await generateScript("Soalan?", "");
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
     expect(body.messages[0].role).toBe("system");
@@ -47,7 +47,7 @@ describe("generateScript (lib/llm)", () => {
   it("embeds the query in the user message", async () => {
     mockFetch.mockResolvedValue(openRouterResponse("Skrip"));
     const { generateScript } = await import("@/lib/llm");
-    await generateScript("Apakah status Sekijang?");
+    await generateScript("Apakah status Sekijang?", "");
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
     const userMsg = body.messages[1];
@@ -58,14 +58,15 @@ describe("generateScript (lib/llm)", () => {
   it("returns trimmed script text from the response", async () => {
     mockFetch.mockResolvedValue(openRouterResponse("  Skrip yang bersih  "));
     const { generateScript } = await import("@/lib/llm");
-    const result = await generateScript("Soalan?");
+    const result = await generateScript("Soalan?", "");
     expect(result).toBe("Skrip yang bersih");
+
   });
 
   it("throws when OpenRouter returns a non-OK status", async () => {
     mockFetch.mockResolvedValue({ ok: false, status: 429, text: async () => "rate limited" });
     const { generateScript } = await import("@/lib/llm");
-    await expect(generateScript("Soalan?")).rejects.toThrow("OpenRouter 429");
+    await expect(generateScript("Soalan?", "")).rejects.toThrow("OpenRouter 429");
   });
 });
 

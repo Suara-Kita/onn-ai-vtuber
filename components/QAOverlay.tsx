@@ -3,27 +3,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { QAEntry } from "@/app/job/qa-recent/route";
 
-const DEFAULT_QA = [
-  {
-    q: "Apakah langkah kerajaan memastikan projek infrastruktur Sekijang P.141 disiapkan mengikut jadual?",
-    a: "Kerajaan memperuntukkan RM45 juta dengan pemantauan bulanan JKR dan penglibatan komuniti tempatan dalam perancangan.",
-  },
-  {
-    q: "Bagaimana kawasan ekonomi khas Johor-Singapura memberi manfaat kepada penduduk tempatan Sekijang?",
-    a: "Pelaburan RM8.2 bilion dijangka mewujudkan 12,000 peluang pekerjaan baharu untuk penduduk Johor menjelang 2027.",
-  },
-  {
-    q: "Apakah status terkini projek naik taraf Jalan Sekijang sepanjang 18km yang dijangka siap Q4 2026?",
-    a: "Kerja tanah telah mencapai 60% kemajuan. Kontraktor tempatan diutamakan dalam semua fasa projek ini.",
-  },
-  {
-    q: "Apakah program perumahan mampu milik yang dirancang untuk golongan B40 di Batu Pahat?",
-    a: "Sebanyak 2,000 unit rumah mampu milik sedang dibina menjelang 2027 di bawah program perumahan Johor baharu.",
-  },
-];
+// Remove "1. " / "2) " numbered-list markers from each line, then join into
+// a single flowing string so the QA bar shows clean prose, not a list dump.
+function cleanAnswer(text: string): string {
+  return text
+    .split(/\n+/)
+    .map((line) => line.replace(/^\d+[.)]\s*/, "").trim())
+    .filter(Boolean)
+    .join(" ");
+}
 
 export default function QAOverlay() {
-  const [pool, setPool] = useState<Array<{ job_id?: string; q: string; a: string }>>(DEFAULT_QA);
+  const [pool, setPool] = useState<Array<{ job_id?: string; q: string; a: string }>>([]);
   const [idx, setIdx] = useState(0);
   const [visible, setVisible] = useState(true);
   const [liveQA, setLiveQA] = useState<{ q: string; a: string } | null>(null);
@@ -31,24 +22,17 @@ export default function QAOverlay() {
   const delayTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // waits for LeftPanel to finish
   const liveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);  // clears liveQA after 30s
   const poolRefresh = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Tracks job_ids already shown as liveQA — excluded from pool so they don't re-appear
-  const shownJobIds = useRef<Set<string>>(new Set());
 
-  // Fetch recent Q&A from Redis and update the rotation pool,
-  // excluding entries already shown as live (prevents 3-minute re-cycling)
   const refreshPool = useCallback(async () => {
     try {
       const res = await fetch("/job/qa-recent");
       if (!res.ok) return;
       const data = (await res.json()) as { entries: QAEntry[] };
-      const unseen = data.entries.filter((e) => !shownJobIds.current.has(e.job_id));
-      if (unseen.length > 0) {
-        setPool(unseen.map((e) => ({ job_id: e.job_id, q: e.query, a: e.script })));
-        setIdx(0);
-      } else {
-        setPool(DEFAULT_QA);
-        setIdx(0);
-      }
+      // Never wipe an existing pool — only update when there's real data coming back.
+      // Guards against Redis blips and TTL expiry clearing the on-screen ticker mid-event.
+      if (data.entries.length === 0) return;
+      setPool(data.entries.map((e) => ({ job_id: e.job_id, q: e.query, a: cleanAnswer(e.qa_answer || e.script) })));
+      setIdx(0);
     } catch {
       // Redis unavailable — keep existing pool
     }
@@ -66,7 +50,7 @@ export default function QAOverlay() {
   // Rotate through pool every 7s when no live job
   useEffect(() => {
     cycleTimer.current = setInterval(() => {
-      if (liveQA) return;
+      if (liveQA || pool.length === 0) return;
       setVisible(false);
       setTimeout(() => {
         setIdx((i) => (i + 1) % pool.length);
@@ -87,6 +71,7 @@ export default function QAOverlay() {
         job_id?: string;
         query?: string;
         script?: string;
+        qa_answer?: string;
         idle?: boolean;
       };
       if (data.idle) {
@@ -98,10 +83,7 @@ export default function QAOverlay() {
       }
       if (!data.job_id) return;
 
-      const fresh = { q: data.query ?? "", a: data.script ?? "" };
-
-      // Exclude from pool rotation immediately — it will appear as liveQA instead
-      shownJobIds.current.add(data.job_id);
+      const fresh = { q: data.query ?? "", a: cleanAnswer((data.qa_answer || data.script) ?? "") };
 
       // Cancel any pending delay/clear from a previous job
       if (delayTimer.current) clearTimeout(delayTimer.current);
@@ -127,7 +109,7 @@ export default function QAOverlay() {
     };
   }, [refreshPool]);
 
-  const qa = liveQA ?? pool[idx] ?? DEFAULT_QA[0];
+  const qa = liveQA ?? pool[idx % Math.max(pool.length, 1)] ?? null;
 
   return (
     <>
@@ -254,12 +236,12 @@ export default function QAOverlay() {
         >
           <div className="qao-col">
             <span className="qao-label-s">Soalan</span>
-            <p className="qao-question">{qa.q}</p>
+            <p className="qao-question">{qa?.q ?? ""}</p>
           </div>
 
           <div className="qao-col">
             <span className="qao-label-j">Jawapan</span>
-            <p className="qao-answer">{qa.a}</p>
+            <p className="qao-answer">{qa?.a ?? ""}</p>
           </div>
         </div>
       </div>
