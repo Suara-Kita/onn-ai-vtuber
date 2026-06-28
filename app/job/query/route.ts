@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
 import { createJob } from "@/lib/job-store";
-import { redis, QA_KEY, QA_TTL_SECONDS } from "@/lib/redis";
+import { redis, QA_KEY, QA_TTL_SECONDS, JOB_KEY } from "@/lib/redis";
 import { queryRagKb } from "@/lib/rag";
 import { generateScript, simplifyForQA, analyzeForPanel } from "@/lib/llm";
 import manifestoItems from "@/manifesto.json";
@@ -63,13 +63,15 @@ export async function POST(request: NextRequest) {
   const created_at = new Date();
   createJob({ job_id, script, query, user_id, rag_answer, qa_answer, panel_analysis, created_at });
 
-  // Store Q&A in Redis sorted set — score = Unix seconds for 3-min window queries
+  // Store Q&A in Redis sorted set — score = Unix seconds for time-window queries
   const score = Math.floor(created_at.getTime() / 1000);
   const member = JSON.stringify({ job_id, query, script, rag_answer, qa_answer, panel_analysis, created_at: created_at.toISOString() });
   await redis
     .pipeline()
     .zadd(QA_KEY, score, member)
     .zremrangebyscore(QA_KEY, "-inf", score - QA_TTL_SECONDS)
+    // Direct key for O(1) job_id lookup in queue/[job_id]
+    .set(JOB_KEY(job_id), member, "EX", QA_TTL_SECONDS)
     .exec()
     .catch((err: Error) => console.error("[redis] zadd failed:", err.message));
 

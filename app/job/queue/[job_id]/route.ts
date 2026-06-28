@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { createJob, triggerJob } from "@/lib/job-store";
-import { redis, QA_KEY, QA_TTL_SECONDS } from "@/lib/redis";
+import { redis, JOB_KEY } from "@/lib/redis";
 import type { QAEntry } from "@/app/job/qa-recent/route";
 
 export async function POST(
@@ -18,20 +18,13 @@ export async function POST(
     return Response.json({ success: true, job_id });
   }
 
-  // In-memory miss — server may have restarted. Fetch from Redis.
+  // In-memory miss — server may have restarted. Direct O(1) lookup by job_id.
   let entry: QAEntry | null = null;
   try {
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    const minScore = nowSeconds - QA_TTL_SECONDS;
-    const members = await redis.zrangebyscore(QA_KEY, minScore, "+inf");
-    for (const m of members) {
-      try {
-        const parsed = JSON.parse(m) as QAEntry;
-        if (parsed.job_id === job_id) { entry = parsed; break; }
-      } catch { /* skip malformed */ }
-    }
+    const raw = await redis.get(JOB_KEY(job_id));
+    if (raw) entry = JSON.parse(raw) as QAEntry;
   } catch (err) {
-    console.error("[redis] queue lookup failed:", (err as Error).message);
+    console.error("[redis] job lookup failed:", (err as Error).message);
   }
 
   if (!entry) {
