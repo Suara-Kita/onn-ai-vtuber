@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { method, nextUrl } = request;
   const path = nextUrl.pathname;
   const ts = new Date().toISOString();
 
-  console.log(`[api] ${ts} ${method} ${path}`);
+  let body: unknown;
+  if (method !== "GET" && method !== "HEAD") {
+    try {
+      body = await request.clone().json();
+    } catch {
+      // not JSON or empty body
+    }
+  }
+
+  console.log(`[api] ${ts} ${method} ${path}`, body ?? "");
 
   return NextResponse.next();
 }
