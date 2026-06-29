@@ -165,10 +165,7 @@ function convertMalayNumbers(text: string): string {
   return t;
 }
 
-// Render a bullet string with numbers and currency bolded.
-function renderBullet(raw: string): React.ReactNode {
-  const text = convertMalayNumbers(raw);
-  // Bold: numbers (with optional scale/currency prefix), years, percentages
+function renderNumberBold(text: string): React.ReactNode {
   const boldRe = /(RM\s*[\d,.]+(?:\s+(?:juta|bilion))?|[\d,.]+(?:\s*%|\s+(?:juta|bilion|ribu))?)/g;
   const parts: React.ReactNode[] = [];
   let last = 0;
@@ -179,6 +176,22 @@ function renderBullet(raw: string): React.ReactNode {
     last = m.index + m[0].length;
   }
   if (last < text.length) parts.push(text.slice(last));
+  return <>{parts}</>;
+}
+
+function renderBullet(raw: string): React.ReactNode {
+  const text = convertMalayNumbers(raw);
+  // Pass 1: split on LLM **markdown bold**
+  const parts: React.ReactNode[] = [];
+  const boldRe = /\*\*(.+?)\*\*/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = boldRe.exec(text)) !== null) {
+    if (m.index > last) parts.push(renderNumberBold(text.slice(last, m.index)));
+    parts.push(<strong key={`md-${m.index}`} style={{ fontWeight: 900 }}>{m[1]}</strong>);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(renderNumberBold(text.slice(last)));
   return <>{parts}</>;
 }
 
