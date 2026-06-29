@@ -2,7 +2,7 @@ import https from "node:https";
 import http from "node:http";
 
 // HTTP POST helper — uses native Node modules so self-signed certs are fine
-export function postJson(url: string, body: object, timeoutMs = 8000): Promise<string> {
+export function postJson(url: string, body: object, timeoutMs = 60000): Promise<string> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
     const data = JSON.stringify(body);

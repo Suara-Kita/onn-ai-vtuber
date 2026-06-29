@@ -44,9 +44,10 @@ export async function generateScript(query: string, ragContext: string): Promise
   return content;
 }
 
-const PANEL_SYSTEM = `Anda adalah penganalisis data. Berikan TIGA poin fakta utama dalam Bahasa Melayu berdasarkan maklumat yang diberikan.
-Setiap poin: maksimum dua belas patah perkataan, padat, bermaklumat, dan boleh menggunakan angka serta singkatan.
-Format: satu poin per baris sahaja. Tiada nombor, tiada bullet, tiada penjelasan tambahan.`;
+const PANEL_SYSTEM = `Anda adalah penganalisis data. Ekstrak maksimum TIGA fakta penting daripada maklumat yang diberikan dalam Bahasa Melayu.
+Gunakan angka dan singkatan terus seperti dalam sumber asal (cth: RM68 bilion, 3,500 km², 7 Januari 2025).
+Setiap poin: ringkas, padat, dan bermaklumat.
+Format: satu poin per baris. Tiada bullet, tiada penjelasan tambahan.`;
 
 export async function analyzeForPanel(query: string, ragContext: string): Promise<string> {
   const userContent = ragContext
