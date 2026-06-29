@@ -233,7 +233,7 @@ export default function LeftPanel() {
     ? (() => {
         const fromAnalysis = (liveSlide.panel_analysis ?? "")
           .split("\n")
-          .map((s) => stripListMarker(s.trim()))
+          .map((s) => s.replace(/^-\s+/, "").trim())
           .filter(Boolean)
           .slice(0, 3);
         if (fromAnalysis.length > 0) return fromAnalysis;

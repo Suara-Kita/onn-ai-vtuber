@@ -47,7 +47,7 @@ export async function generateScript(query: string, ragContext: string): Promise
 const PANEL_SYSTEM = `Anda adalah penganalisis data. Ekstrak maksimum TIGA fakta penting daripada maklumat yang diberikan dalam Bahasa Melayu.
 Gunakan angka dan singkatan terus seperti dalam sumber asal (cth: RM68 bilion, 3,500 km², 7 Januari 2025).
 Setiap poin: ringkas, padat, dan bermaklumat.
-Format: satu poin per baris. Tiada bullet, tiada penjelasan tambahan.`;
+Format: markdown bullet list. Setiap poin dimulai dengan "- " (tanda sempang dan ruang). Tiada "1.", "2.", atau nombor sebagai bullet.`;
 
 export async function analyzeForPanel(query: string, ragContext: string): Promise<string> {
   const userContent = ragContext
