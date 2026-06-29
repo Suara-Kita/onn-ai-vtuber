@@ -10,11 +10,12 @@ import { NextRequest } from "next/server";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
-const { mockPipeline, mockQueryRagKb, mockGenerateScript, mockSimplifyForQA, mockAnalyzeForPanel, mockZrangebyscore } =
+const { mockPipeline, mockQueryRagKb, mockGenerateScript, mockSimplifyForQA, mockAnalyzeForPanel, mockRedisGet } =
   vi.hoisted(() => {
     const mockPipeline = {
       zadd: vi.fn().mockReturnThis(),
       zremrangebyscore: vi.fn().mockReturnThis(),
+      set: vi.fn().mockReturnThis(),
       exec: vi.fn().mockResolvedValue([[null, 1], [null, 0]]),
     };
     return {
@@ -23,7 +24,7 @@ const { mockPipeline, mockQueryRagKb, mockGenerateScript, mockSimplifyForQA, moc
       mockGenerateScript: vi.fn(),
       mockSimplifyForQA: vi.fn().mockResolvedValue("Ringkasan satu ayat."),
       mockAnalyzeForPanel: vi.fn().mockResolvedValue("Poin satu\nPoin dua\nPoin tiga"),
-      mockZrangebyscore: vi.fn().mockResolvedValue([]),
+      mockRedisGet: vi.fn().mockResolvedValue(null),
     };
   });
 
@@ -37,10 +38,11 @@ vi.mock("@/lib/rag", () => ({ queryRagKb: mockQueryRagKb }));
 vi.mock("@/lib/redis", () => ({
   redis: {
     pipeline: vi.fn(() => mockPipeline),
-    zrangebyscore: mockZrangebyscore,
+    get: mockRedisGet,
   },
   QA_KEY: "vroid:qa:recent",
   QA_TTL_SECONDS: 180,
+  JOB_KEY: (job_id: string) => `vroid:job:${job_id}`,
 }));
 
 // ── Reset store between tests ──────────────────────────────────────────────
@@ -52,7 +54,7 @@ beforeEach(() => {
   mockPipeline.exec.mockResolvedValue([[null, 1], [null, 0]]);
   mockSimplifyForQA.mockResolvedValue("Ringkasan satu ayat.");
   mockAnalyzeForPanel.mockResolvedValue("Poin satu\nPoin dua\nPoin tiga");
-  mockZrangebyscore.mockResolvedValue([]);
+  mockRedisGet.mockResolvedValue(null);
 });
 
 // ── Request helpers ────────────────────────────────────────────────────────
@@ -280,18 +282,13 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
       expect(triggerRes.status).toBe(404);
     });
 
-    it("RAG failure falls back to empty context — script still generated", async () => {
+    it("RAG failure returns 503 and blocks script generation", async () => {
       mockQueryRagKb.mockRejectedValueOnce(new Error("KB offline"));
-      mockGenerateScript.mockResolvedValue("Skrip tanpa konteks.");
 
       const { POST: queryPOST } = await import("@/app/job/query/route");
-      const { POST: queuePOST } = await import("@/app/job/queue/[job_id]/route");
 
       const res = await queryPOST(makeQueryRequest({ query: "Soalan?", user_id: "u1", job_id: "rag-fail" }));
-      expect(res.status).toBe(200);
-
-      const triggerRes = await queuePOST(...makeQueueRequest("rag-fail"));
-      expect(triggerRes.status).toBe(200);
+      expect(res.status).toBe(503);
     });
 
     it("same job_id cannot be triggered before query is posted", async () => {
@@ -330,7 +327,7 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
 
     it("script is passed through as-is — server does not trim or alter word count", async () => {
       const script = "Satu dua tiga empat lima";
-      mockQueryRagKb.mockResolvedValue("");
+      mockQueryRagKb.mockResolvedValue("Konteks dari pangkalan pengetahuan.");
       mockGenerateScript.mockResolvedValue(script);
 
       const { POST: queryPOST } = await import("@/app/job/query/route");
@@ -347,16 +344,16 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
       unsub();
     });
 
-    it("manifesto path calls generateScript once with no RAG context", async () => {
+    it("manifesto path calls generateScript once with item konten as context", async () => {
       mockGenerateScript.mockResolvedValue("Skrip manifesto.");
 
       const { POST: queryPOST } = await import("@/app/job/query/route");
       await queryPOST(makeQueryRequest({ query: "", user_id: "u1", job_id: "manifesto-83" }));
 
       expect(mockGenerateScript).toHaveBeenCalledOnce();
-      // RAG context arg should be empty string for manifesto path
-      const ragArg = mockGenerateScript.mock.calls[0][1];
-      expect(ragArg).toBe("");
+      // RAG context arg should be the manifesto item's konten (non-empty)
+      const ragArg = mockGenerateScript.mock.calls[0][1] as string;
+      expect(ragArg.length).toBeGreaterThan(0);
     });
   });
 });

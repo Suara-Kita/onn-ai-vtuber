@@ -6,8 +6,8 @@ const { mockTriggerJob, mockCreateJob } = vi.hoisted(() => ({
   mockCreateJob: vi.fn(),
 }));
 
-const { mockZrangebyscore } = vi.hoisted(() => ({
-  mockZrangebyscore: vi.fn(),
+const { mockRedisGet } = vi.hoisted(() => ({
+  mockRedisGet: vi.fn(),
 }));
 
 vi.mock("@/lib/job-store", () => ({
@@ -16,9 +16,10 @@ vi.mock("@/lib/job-store", () => ({
 }));
 
 vi.mock("@/lib/redis", () => ({
-  redis: { zrangebyscore: mockZrangebyscore },
+  redis: { get: mockRedisGet },
   QA_KEY: "vroid:qa:recent",
   QA_TTL_SECONDS: 3600,
+  JOB_KEY: (job_id: string) => `vroid:job:${job_id}`,
 }));
 
 import { POST } from "@/app/job/queue/[job_id]/route";
@@ -47,7 +48,7 @@ const SAMPLE_ENTRY = {
 describe("POST /job/queue/[job_id]", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mockZrangebyscore.mockResolvedValue([]);
+    mockRedisGet.mockResolvedValue([]);
   });
 
   // ── Fast path (in-memory hit) ─────────────────────────────────────────────
@@ -76,7 +77,7 @@ describe("POST /job/queue/[job_id]", () => {
     it("does not query Redis when in-memory hit succeeds", async () => {
       mockTriggerJob.mockReturnValue(true);
       await POST(...makeRequest("abc-123"));
-      expect(mockZrangebyscore).not.toHaveBeenCalled();
+      expect(mockRedisGet).not.toHaveBeenCalled();
     });
 
     it("does not call createJob on memory hit", async () => {
@@ -95,28 +96,21 @@ describe("POST /job/queue/[job_id]", () => {
     });
 
     it("queries Redis when in-memory miss", async () => {
-      mockZrangebyscore.mockResolvedValue([JSON.stringify(SAMPLE_ENTRY)]);
+      mockRedisGet.mockResolvedValue(JSON.stringify(SAMPLE_ENTRY));
       await POST(...makeRequest("abc-123"));
-      expect(mockZrangebyscore).toHaveBeenCalled();
+      expect(mockRedisGet).toHaveBeenCalled();
     });
 
     it("returns 404 when job_id not in Redis either", async () => {
-      mockZrangebyscore.mockResolvedValue([]);
+      mockRedisGet.mockResolvedValue([]);
       const res = await POST(...makeRequest("unknown-id"));
       expect(res.status).toBe(404);
       const data = await res.json();
       expect(data.error).toMatch(/not found/);
     });
 
-    it("returns 404 when Redis has entries but none match job_id", async () => {
-      const other = { ...SAMPLE_ENTRY, job_id: "different-id" };
-      mockZrangebyscore.mockResolvedValue([JSON.stringify(other)]);
-      const res = await POST(...makeRequest("abc-123"));
-      expect(res.status).toBe(404);
-    });
-
     it("rehydrates matching entry via createJob", async () => {
-      mockZrangebyscore.mockResolvedValue([JSON.stringify(SAMPLE_ENTRY)]);
+      mockRedisGet.mockResolvedValue(JSON.stringify(SAMPLE_ENTRY));
       await POST(...makeRequest("abc-123"));
       expect(mockCreateJob).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -131,13 +125,13 @@ describe("POST /job/queue/[job_id]", () => {
     });
 
     it("calls triggerJob with forced=true after rehydration", async () => {
-      mockZrangebyscore.mockResolvedValue([JSON.stringify(SAMPLE_ENTRY)]);
+      mockRedisGet.mockResolvedValue(JSON.stringify(SAMPLE_ENTRY));
       await POST(...makeRequest("abc-123"));
       expect(mockTriggerJob).toHaveBeenLastCalledWith("abc-123", true);
     });
 
     it("returns 200 after successful rehydration and trigger", async () => {
-      mockZrangebyscore.mockResolvedValue([JSON.stringify(SAMPLE_ENTRY)]);
+      mockRedisGet.mockResolvedValue(JSON.stringify(SAMPLE_ENTRY));
       const res = await POST(...makeRequest("abc-123"));
       expect(res.status).toBe(200);
       const data = await res.json();
@@ -145,21 +139,21 @@ describe("POST /job/queue/[job_id]", () => {
       expect(data.job_id).toBe("abc-123");
     });
 
-    it("skips malformed Redis members without throwing", async () => {
-      mockZrangebyscore.mockResolvedValue(["not-json", JSON.stringify(SAMPLE_ENTRY)]);
+    it("skips malformed Redis member without throwing", async () => {
+      mockRedisGet.mockResolvedValue("not-json");
       const res = await POST(...makeRequest("abc-123"));
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(404);
     });
 
     it("returns 404 when Redis throws", async () => {
-      mockZrangebyscore.mockRejectedValue(new Error("redis down"));
+      mockRedisGet.mockRejectedValue(new Error("redis down"));
       const res = await POST(...makeRequest("abc-123"));
       expect(res.status).toBe(404);
     });
 
     it("fills missing qa_answer with empty string on rehydration", async () => {
       const entryNoQA = { ...SAMPLE_ENTRY, qa_answer: undefined };
-      mockZrangebyscore.mockResolvedValue([JSON.stringify(entryNoQA)]);
+      mockRedisGet.mockResolvedValue(JSON.stringify(entryNoQA));
       await POST(...makeRequest("abc-123"));
       expect(mockCreateJob).toHaveBeenCalledWith(
         expect.objectContaining({ qa_answer: "" })
@@ -168,7 +162,7 @@ describe("POST /job/queue/[job_id]", () => {
 
     it("fills missing rag_answer with empty string on rehydration", async () => {
       const entryNoRag = { ...SAMPLE_ENTRY, rag_answer: undefined };
-      mockZrangebyscore.mockResolvedValue([JSON.stringify(entryNoRag)]);
+      mockRedisGet.mockResolvedValue(JSON.stringify(entryNoRag));
       await POST(...makeRequest("abc-123"));
       expect(mockCreateJob).toHaveBeenCalledWith(
         expect.objectContaining({ rag_answer: "" })
@@ -176,7 +170,7 @@ describe("POST /job/queue/[job_id]", () => {
     });
 
     it("rehydrates panel_analysis from Redis entry", async () => {
-      mockZrangebyscore.mockResolvedValue([JSON.stringify(SAMPLE_ENTRY)]);
+      mockRedisGet.mockResolvedValue(JSON.stringify(SAMPLE_ENTRY));
       await POST(...makeRequest("abc-123"));
       expect(mockCreateJob).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -187,7 +181,7 @@ describe("POST /job/queue/[job_id]", () => {
 
     it("fills missing panel_analysis with empty string on rehydration", async () => {
       const entryNoPanel = { ...SAMPLE_ENTRY, panel_analysis: undefined };
-      mockZrangebyscore.mockResolvedValue([JSON.stringify(entryNoPanel)]);
+      mockRedisGet.mockResolvedValue(JSON.stringify(entryNoPanel));
       await POST(...makeRequest("abc-123"));
       expect(mockCreateJob).toHaveBeenCalledWith(
         expect.objectContaining({ panel_analysis: "" })

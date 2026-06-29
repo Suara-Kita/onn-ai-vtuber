@@ -6,6 +6,7 @@ const { mockCreateJob, mockPipeline, mockQueryRagKb, mockGenerateScript, mockSim
     const mockPipeline = {
       zadd: vi.fn().mockReturnThis(),
       zremrangebyscore: vi.fn().mockReturnThis(),
+      set: vi.fn().mockReturnThis(),
       exec: vi.fn().mockResolvedValue([[null, 1], [null, 0]]),
     };
     return {
@@ -28,6 +29,7 @@ vi.mock("@/lib/redis", () => ({
   redis: { pipeline: vi.fn(() => mockPipeline) },
   QA_KEY: "vroid:qa:recent",
   QA_TTL_SECONDS: 180,
+  JOB_KEY: (job_id: string) => `vroid:job:${job_id}`,
 }));
 vi.mock("@/lib/job-store", () => ({
   createJob: mockCreateJob,
@@ -297,11 +299,10 @@ describe("POST /job/query", () => {
       expect(mockCreateJob).not.toHaveBeenCalled();
     });
 
-    it("RAG returning empty string does not block script generation", async () => {
+    it("RAG returning empty string returns 503 and blocks script generation", async () => {
       mockQueryRagKb.mockResolvedValue("");
-      mockGenerateScript.mockResolvedValue("Skrip tanpa konteks RAG.");
       const res = await POST(makeRequest({ query: "Soalan tidak dikenali?", user_id: "u1" }));
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(503);
     });
 
     it("does not throw if Redis pipeline fails", async () => {

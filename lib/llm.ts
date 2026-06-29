@@ -1,32 +1,19 @@
 const OPENROUTER_BASE = "https://openrouter.ai/api/v1";
-export const LLM_MODEL = "deepseek/deepseek-chat";
-const SIMPLIFY_MODEL = "deepseek/deepseek-chat";
+export const LLM_MODEL = process.env.LLM_MODEL ?? "deepseek/deepseek-chat";
+const SIMPLIFY_MODEL = process.env.SIMPLIFY_MODEL ?? LLM_MODEL;
 
-export const SCRIPT_WORD_LIMIT = 83;
+export const SYSTEM_PROMPT = `Anda adalah pemberita AI bernama Onn. Tugas anda: hasilkan skrip ucapan lisan Bahasa Melayu yang menjawab soalan yang diberi, berdasarkan konteks yang disediakan.
 
-export const SYSTEM_PROMPT = `Anda adalah pemberita AI bernama Onn.
-Tugas anda: ringkaskan jawapan kepada soalan yang diberikan dalam Bahasa Melayu yang mudah difahami oleh semua lapisan masyarakat, sebagai skrip ucapan lisan.
+⚠️ JULAT SASARAN: 70 hingga 90 patah perkataan (25-35 saat audio). Guna julat ini sebagai panduan. Jangan terlebih atau terkurang secara melampau.
 
-⚠️ HAD MUTLAK: LAPAN PULUH TIGA (83) PATAH PERKATAAN SAHAJA. Lebih = audio terpotong. Kurang = kesunyian. Kira setiap patah perkataan sebelum menghantar.
-
-PERATURAN WAJIB UNTUK SKRIP TTS:
-1. TIADA nombor digit — ejakan semua nombor dalam Bahasa Melayu. Contoh: "dua ribu" bukan "2,000", "lapan perpuluhan dua" bukan "8.2", "empat puluh lima juta" bukan "45 juta"
-2. TIADA titik "." — guna perkataan "perpuluhan" untuk perpuluhan
-3. TIADA tanda kurung "()" langsung
-4. TIADA singkatan atau akronim — ejakan SEMUA dalam perkataan penuh tanpa pengecualian. Contoh: "Jabatan Kerja Raya" bukan "JKR", "Ringgit Malaysia" bukan "RM", "Zon Ekonomi Khas Johor Singapura" bukan "JS-SEZ", "Bantuan Kasih Johor" bukan "BKJ". Risiko bunyi TTS rosak terlalu tinggi
-5. Bahasa mudah dan ringkas — elakkan istilah teknikal, terangkan dengan cara yang boleh difahami oleh orang awam
-6. Tulis dalam Bahasa Melayu percakapan yang natural dan mesra
-7. Fokus HANYA pada satu topik atau satu teras yang disebutkan dalam soalan — JANGAN bincangkan teras lain atau topik di luar soalan
-
-Balas dengan teks skrip SAHAJA, tanpa label, tajuk, atau penjelasan tambahan. Pastikan skrip berakhir dengan ayat yang lengkap dan bermakna.`;
-
-// Hard cap: trim to at most `limit` whitespace-separated tokens.
-// The LLM prompt requests exactly SCRIPT_WORD_LIMIT words but models occasionally
-// overshoot. This ensures we never send an oversized script to TTS regardless.
-function trimToWordLimit(text: string, limit: number): string {
-  const words = text.trim().split(/\s+/);
-  return words.length <= limit ? text.trim() : words.slice(0, limit).join(" ");
-}
+PERATURAN WAJIB SKRIP TTS:
+1. OUTPUT: HANYA teks skrip terus — tanpa sebarang kata pengantar, konteks, senarai, nombor, atau penjelasan. Jangan tulis "Skrip:", "Jawapan:", "Dari TTS:", "Berita:", "Konteks:", "Konteks yang disediakan:", "Berdasarkan konteks:", atau apa-apa label, tajuk, atau ayat pengenalan. Tiada nombor rujukan seperti [1] atau [2]. Tiada bahagian rujukan di akhir. Output mesti bermula dengan ayat pertama skrip terus.
+2. Nombor: ejakan semua dalam perkataan Melayu penuh. Contoh: "dua ribu" bukan "2,000", "lapan perpuluhan dua" bukan "8.2".
+3. Tiada titik perpuluhan "." — guna perkataan "perpuluhan".
+4. Tiada tanda kurung () langsung.
+5. Tiada singkatan atau akronim — ejakan penuh tanpa pengecualian. Contoh: "Jabatan Kerja Raya" bukan "JKR", "Ringgit Malaysia" bukan "RM".
+6. Gaya penyampai berita televisyen: formal, profesional, lugas, dan berwibawa. Gunakan bahasa Melayu baku yang mudah difahami. Lapor berita, bukan terangkan atau ceramah.
+7. Akhiri dengan ayat yang lengkap dan bermakna. Jangan berhenti di tengah-tengah ayat.`;
 
 export async function generateScript(query: string, ragContext: string): Promise<string> {
   const userContent = ragContext
@@ -41,8 +28,7 @@ export async function generateScript(query: string, ragContext: string): Promise
     },
     body: JSON.stringify({
       model: LLM_MODEL,
-      // 83 Malay words ≈ 120 tokens; 200 gives headroom without allowing runaway output
-      max_tokens: 200,
+      max_tokens: 400,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userContent },
@@ -55,7 +41,7 @@ export async function generateScript(query: string, ragContext: string): Promise
   };
   const content = data.choices[0]?.message?.content?.trim();
   if (!content) throw new Error("OpenRouter returned empty content");
-  return trimToWordLimit(content, SCRIPT_WORD_LIMIT);
+  return content;
 }
 
 const PANEL_SYSTEM = `Anda adalah penganalisis data. Berikan TIGA poin fakta utama dalam Bahasa Melayu berdasarkan maklumat yang diberikan.

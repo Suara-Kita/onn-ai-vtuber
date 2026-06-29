@@ -27,18 +27,20 @@ export async function POST(request: NextRequest) {
   if (isManifesto) {
     const item = manifesto[Math.floor(Math.random() * manifesto.length)];
     query = item.tajuk;
-    llmPrompt = `Terangkan tentang "${item.tajuk}" di bawah teras ${item.teras} dalam manifesto BN Johor PRN 2026.`;
+    llmPrompt = item.tajuk;
     simplifyQuery = item.tajuk;
     simplifyContext = item.konten.join(" ");
   }
 
-  // RAG KB only for real user queries — manifesto prompts are self-contained
-  const rag_answer = isManifesto ? "" : await queryRagKb(query).catch((err: Error) => {
-    console.error("[rag] KB query failed:", err.message);
-    return "";
-  });
-
+  let rag_answer = isManifesto ? simplifyContext : "";
   if (!isManifesto) {
+    rag_answer = await queryRagKb(query).catch((err: Error) => {
+      console.error("[rag] KB query failed:", err.message);
+      return "";
+    });
+    if (!rag_answer) {
+      return Response.json({ error: "Pangkalan pengetahuan tidak tersedia. Sila cuba sebentar lagi." }, { status: 503 });
+    }
     simplifyQuery = query;
     simplifyContext = rag_answer;
   }

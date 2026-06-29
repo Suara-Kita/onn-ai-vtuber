@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { SYSTEM_PROMPT, LLM_MODEL, SCRIPT_WORD_LIMIT, analyzeForPanel } from "@/lib/llm";
+import { SYSTEM_PROMPT, LLM_MODEL, analyzeForPanel } from "@/lib/llm";
 
 // ── Mock global fetch ─────────────────────────────────────────────────────
 
@@ -62,38 +62,12 @@ describe("generateScript (lib/llm)", () => {
     expect(result).toBe("Skrip yang bersih");
   });
 
-  it("hard-trims output to 83 words when LLM returns more", async () => {
-    const over = Array.from({ length: 94 }, (_, i) => `perkataan${i + 1}`).join(" ");
-    expect(over.split(/\s+/).length).toBe(94);
-    mockFetch.mockResolvedValue(openRouterResponse(over));
-    const { generateScript } = await import("@/lib/llm");
-    const result = await generateScript("Soalan?", "");
-    expect(result.split(/\s+/).length).toBe(SCRIPT_WORD_LIMIT);
-  });
-
-  it("does not trim output that is exactly 83 words", async () => {
-    const exact = Array.from({ length: 83 }, (_, i) => `perkataan${i + 1}`).join(" ");
-    mockFetch.mockResolvedValue(openRouterResponse(exact));
-    const { generateScript } = await import("@/lib/llm");
-    const result = await generateScript("Soalan?", "");
-    expect(result.split(/\s+/).length).toBe(83);
-    expect(result).toBe(exact);
-  });
-
-  it("does not trim output that is under 83 words", async () => {
-    const under = Array.from({ length: 75 }, (_, i) => `perkataan${i + 1}`).join(" ");
-    mockFetch.mockResolvedValue(openRouterResponse(under));
-    const { generateScript } = await import("@/lib/llm");
-    const result = await generateScript("Soalan?", "");
-    expect(result.split(/\s+/).length).toBe(75);
-  });
-
-  it("sends max_tokens: 200 to prevent runaway output", async () => {
+  it("sends max_tokens: 400 to prevent runaway output", async () => {
     mockFetch.mockResolvedValue(openRouterResponse("Skrip"));
     const { generateScript } = await import("@/lib/llm");
     await generateScript("Soalan?", "");
     const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
-    expect(body.max_tokens).toBe(200);
+    expect(body.max_tokens).toBe(400);
   });
 
   it("throws when OpenRouter returns a non-OK status", async () => {
@@ -105,40 +79,34 @@ describe("generateScript (lib/llm)", () => {
 
 describe("SYSTEM_PROMPT TTS constraints", () => {
   it("forbids digit characters", () => {
-    expect(SYSTEM_PROMPT).toMatch(/TIADA nombor digit/);
+    expect(SYSTEM_PROMPT).toMatch(/Nombor/);
   });
 
   it("forbids decimal point", () => {
-    expect(SYSTEM_PROMPT).toMatch(/TIADA titik/);
+    expect(SYSTEM_PROMPT).toMatch(/Tiada titik perpuluhan/);
   });
 
   it("forbids parentheses", () => {
-    expect(SYSTEM_PROMPT).toMatch(/TIADA tanda kurung/);
+    expect(SYSTEM_PROMPT).toMatch(/Tiada tanda kurung/);
   });
 
   it("forbids abbreviations and acronyms", () => {
-    expect(SYSTEM_PROMPT).toMatch(/TIADA singkatan atau akronim/);
+    expect(SYSTEM_PROMPT).toMatch(/Tiada singkatan atau akronim/);
   });
 
-  it("targets exactly 83 words and states the hard limit clearly", () => {
-    // Check both the opening warning and the numbered rule
-    expect(SYSTEM_PROMPT).toMatch(/lapan puluh tiga/i);
-    expect(SYSTEM_PROMPT).toMatch(/83/);
-  });
-
-  it("SCRIPT_WORD_LIMIT constant matches the prompt value", () => {
-    expect(SCRIPT_WORD_LIMIT).toBe(83);
+  it("targets 70-90 word range instead of a fixed hard limit", () => {
+    expect(SYSTEM_PROMPT).toMatch(/70/);
+    expect(SYSTEM_PROMPT).toMatch(/90/);
   });
 
   it("applies to both real queries and manifesto fallback — same prompt, no branching", () => {
-    expect(SYSTEM_PROMPT).toContain("PERATURAN WAJIB UNTUK SKRIP TTS");
+    expect(SYSTEM_PROMPT).toContain("PERATURAN WAJIB SKRIP TTS");
   });
 
-  it("ends with a complete sentence instruction, not a word-count reminder", () => {
+  it("ends with a complete sentence instruction", () => {
     const lines = SYSTEM_PROMPT.trim().split("\n");
     const lastLine = lines[lines.length - 1];
     expect(lastLine).toContain("ayat yang lengkap");
-    expect(lastLine).not.toMatch(/\(83\)/);
   });
 });
 
