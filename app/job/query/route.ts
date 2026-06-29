@@ -8,6 +8,7 @@ import manifestoItems from "@/manifesto.json";
 
 interface ManifestoItem { teras: string; tajuk: string; konten: string[] }
 const manifesto = manifestoItems as ManifestoItem[];
+let manifestoIndex = 0;
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
@@ -25,7 +26,9 @@ export async function POST(request: NextRequest) {
   let simplifyQuery = query;
   let simplifyContext = "";
   if (isManifesto) {
-    const item = manifesto[Math.floor(Math.random() * manifesto.length)];
+    const item = manifesto[manifestoIndex % manifesto.length];
+    console.log(`[manifesto] index=${manifestoIndex} → "${item.tajuk}"`);
+    manifestoIndex++;
     query = item.tajuk;
     llmPrompt = item.tajuk;
     simplifyQuery = item.tajuk;
