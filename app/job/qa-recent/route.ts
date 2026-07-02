@@ -1,4 +1,4 @@
-import { redis, QA_KEY, QA_TTL_SECONDS } from "@/lib/redis";
+import { redis, QA_KEY } from "@/lib/redis";
 
 export interface QAEntry {
   job_id: string;
@@ -11,14 +11,11 @@ export interface QAEntry {
 }
 
 export async function GET() {
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  const minScore = nowSeconds - QA_TTL_SECONDS;
-
   let members: string[] = [];
   try {
-    members = await redis.zrangebyscore(QA_KEY, minScore, "+inf");
+    members = await redis.zrange(QA_KEY, 0, -1);
   } catch (err) {
-    console.error("[redis] zrangebyscore failed:", (err as Error).message);
+    console.error("[redis] zrange failed:", (err as Error).message);
   }
 
   const entries: QAEntry[] = members

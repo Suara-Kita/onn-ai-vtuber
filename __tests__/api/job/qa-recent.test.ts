@@ -1,13 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockZrangebyscore } = vi.hoisted(() => ({
-  mockZrangebyscore: vi.fn(),
+const { mockZrange } = vi.hoisted(() => ({
+  mockZrange: vi.fn(),
 }));
 
 vi.mock("@/lib/redis", () => ({
-  redis: { zrangebyscore: mockZrangebyscore },
+  redis: { zrange: mockZrange },
   QA_KEY: "vroid:qa:recent",
-  QA_TTL_SECONDS: 180,
 }));
 
 import { GET } from "@/app/job/qa-recent/route";
@@ -32,17 +31,17 @@ function makeEntry(overrides: Partial<{
 describe("GET /job/qa-recent", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("returns empty entries when Redis has no data in the window", async () => {
-    mockZrangebyscore.mockResolvedValue([]);
+  it("returns empty entries when Redis has no data", async () => {
+    mockZrange.mockResolvedValue([]);
     const res = await GET();
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.entries).toEqual([]);
   });
 
-  it("returns entries from the last 3 minutes", async () => {
+  it("returns stored entries regardless of age", async () => {
     const entry = makeEntry({ query: "Soalan A?", script: "Skrip A" });
-    mockZrangebyscore.mockResolvedValue([entry]);
+    mockZrange.mockResolvedValue([entry]);
     const res = await GET();
     const data = await res.json();
     expect(data.entries).toHaveLength(1);
@@ -50,14 +49,10 @@ describe("GET /job/qa-recent", () => {
     expect(data.entries[0].script).toBe("Skrip A");
   });
 
-  it("queries Redis with a min score of now-180s", async () => {
-    mockZrangebyscore.mockResolvedValue([]);
-    const before = Math.floor(Date.now() / 1000) - 180;
+  it("queries Redis for the full sorted set — no time window", async () => {
+    mockZrange.mockResolvedValue([]);
     await GET();
-    const [key, min] = mockZrangebyscore.mock.calls[0];
-    expect(key).toBe("vroid:qa:recent");
-    expect(Number(min)).toBeGreaterThanOrEqual(before);
-    expect(Number(min)).toBeLessThanOrEqual(before + 2);
+    expect(mockZrange).toHaveBeenCalledWith("vroid:qa:recent", 0, -1);
   });
 
   it("returns multiple entries in reverse order (newest first)", async () => {
@@ -65,7 +60,7 @@ describe("GET /job/qa-recent", () => {
       makeEntry({ query: "Soalan lama", script: "Skrip lama" }),
       makeEntry({ query: "Soalan baru", script: "Skrip baru" }),
     ];
-    mockZrangebyscore.mockResolvedValue(members);
+    mockZrange.mockResolvedValue(members);
     const res = await GET();
     const data = await res.json();
     expect(data.entries[0].query).toBe("Soalan baru");
@@ -73,7 +68,7 @@ describe("GET /job/qa-recent", () => {
   });
 
   it("silently skips malformed JSON members", async () => {
-    mockZrangebyscore.mockResolvedValue([
+    mockZrange.mockResolvedValue([
       "invalid-json",
       makeEntry({ query: "Soalan valid" }),
     ]);
@@ -84,7 +79,7 @@ describe("GET /job/qa-recent", () => {
   });
 
   it("returns empty entries and does not throw when Redis errors", async () => {
-    mockZrangebyscore.mockRejectedValue(new Error("Redis connection refused"));
+    mockZrange.mockRejectedValue(new Error("Redis connection refused"));
     const res = await GET();
     expect(res.status).toBe(200);
     const data = await res.json();
@@ -92,7 +87,7 @@ describe("GET /job/qa-recent", () => {
   });
 
   it("includes all required QAEntry fields", async () => {
-    mockZrangebyscore.mockResolvedValue([makeEntry()]);
+    mockZrange.mockResolvedValue([makeEntry()]);
     const res = await GET();
     const data = await res.json();
     const entry = data.entries[0];

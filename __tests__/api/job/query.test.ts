@@ -5,7 +5,6 @@ const { mockCreateJob, mockPipeline, mockQueryRagKb, mockGenerateScript, mockSim
   vi.hoisted(() => {
     const mockPipeline = {
       zadd: vi.fn().mockReturnThis(),
-      zremrangebyscore: vi.fn().mockReturnThis(),
       set: vi.fn().mockReturnThis(),
       exec: vi.fn().mockResolvedValue([[null, 1], [null, 0]]),
     };
@@ -28,7 +27,6 @@ vi.mock("@/lib/llm", () => ({
 vi.mock("@/lib/redis", () => ({
   redis: { pipeline: vi.fn(() => mockPipeline) },
   QA_KEY: "vroid:qa:recent",
-  QA_TTL_SECONDS: 180,
   JOB_KEY: (job_id: string) => `vroid:job:${job_id}`,
 }));
 vi.mock("@/lib/job-store", () => ({
@@ -36,7 +34,7 @@ vi.mock("@/lib/job-store", () => ({
 }));
 
 import { POST } from "@/app/job/query/route";
-import { redis, QA_KEY } from "@/lib/redis";
+import { redis } from "@/lib/redis";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -95,23 +93,25 @@ describe("POST /job/query", () => {
       expect(storedQuery.length).toBeGreaterThan(0);
     });
 
-    it("uses caller-provided job_id when supplied", async () => {
-      await POST(makeRequest({ query: "", user_id: "u1", job_id: "caller-uuid-empty" }));
-      expect(mockCreateJob).toHaveBeenCalledWith(
-        expect.objectContaining({ job_id: "caller-uuid-empty" })
-      );
-    });
-
-    it("returns caller-provided job_id in response", async () => {
-      const res = await POST(makeRequest({ query: "", user_id: "u1", job_id: "caller-uuid-empty" }));
+    it("ignores a caller-supplied job_id and generates its own UUID", async () => {
+      const res = await POST(makeRequest({ query: "", user_id: "u1", job_id: "caller-supplied-id" }));
       const { jobs } = await res.json();
-      expect(jobs[0].job_id).toBe("caller-uuid-empty");
+      expect(jobs[0].job_id).not.toBe("caller-supplied-id");
+      expect(jobs[0].job_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
 
     it("generates a UUID job_id when none is supplied", async () => {
       const res = await POST(makeRequest({ query: "", user_id: "u1" }));
       const { jobs } = await res.json();
       expect(jobs[0].job_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    });
+
+    it("generates a different job_id on every call, even for identical input", async () => {
+      const res1 = await POST(makeRequest({ query: "", user_id: "u1" }));
+      const res2 = await POST(makeRequest({ query: "", user_id: "u1" }));
+      const { jobs: jobs1 } = await res1.json();
+      const { jobs: jobs2 } = await res2.json();
+      expect(jobs1[0].job_id).not.toBe(jobs2[0].job_id);
     });
 
     it("does NOT fire SSE — left panel only updates on /job/queue/[job_id]", async () => {
@@ -175,9 +175,9 @@ describe("POST /job/query", () => {
       );
     });
 
-    it("uses caller-provided job_id", async () => {
+    it("ignores a caller-supplied job_id, even for a valid query", async () => {
       await POST(makeRequest({ query: "Soalan?", user_id: "u1", job_id: "caller-uuid-valid" }));
-      expect(mockCreateJob).toHaveBeenCalledWith(
+      expect(mockCreateJob).not.toHaveBeenCalledWith(
         expect.objectContaining({ job_id: "caller-uuid-valid" })
       );
     });
@@ -332,10 +332,10 @@ describe("POST /job/query", () => {
       expect(score).toBeLessThanOrEqual(after);
     });
 
-    it("prunes entries older than 3 minutes on every write", async () => {
+    it("stores the job under its key with no expiry", async () => {
       await POST(makeRequest({ query: "Q?", user_id: "u1" }));
-      const score = mockPipeline.zadd.mock.calls[0][1] as number;
-      expect(mockPipeline.zremrangebyscore).toHaveBeenCalledWith(QA_KEY, "-inf", score - 180);
+      const setArgs = mockPipeline.set.mock.calls[0];
+      expect(setArgs).toHaveLength(2); // key, value only — no EX/TTL arg
     });
   });
 });

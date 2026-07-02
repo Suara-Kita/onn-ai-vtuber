@@ -14,7 +14,6 @@ const { mockPipeline, mockQueryRagKb, mockGenerateScript, mockSimplifyForQA, moc
   vi.hoisted(() => {
     const mockPipeline = {
       zadd: vi.fn().mockReturnThis(),
-      zremrangebyscore: vi.fn().mockReturnThis(),
       set: vi.fn().mockReturnThis(),
       exec: vi.fn().mockResolvedValue([[null, 1], [null, 0]]),
     };
@@ -41,7 +40,6 @@ vi.mock("@/lib/redis", () => ({
     get: mockRedisGet,
   },
   QA_KEY: "vroid:qa:recent",
-  QA_TTL_SECONDS: 180,
   JOB_KEY: (job_id: string) => `vroid:job:${job_id}`,
 }));
 
@@ -92,7 +90,7 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
       const received: unknown[] = [];
       const unsub = subscribe((job, _forced) => received.push(job));
 
-      await queryPOST(makeQueryRequest({ query: "", user_id: "u1", job_id: "empty-flow-1" }));
+      await queryPOST(makeQueryRequest({ query: "", user_id: "u1" }));
 
       expect(received).toHaveLength(0); // no SSE fired
       unsub();
@@ -103,12 +101,14 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
       const { POST: queuePOST } = await import("@/app/job/queue/[job_id]/route");
       const { subscribe } = await import("@/lib/job-store");
 
-      await queryPOST(makeQueryRequest({ query: "", user_id: "u1", job_id: "empty-flow-2" }));
+      const qRes = await queryPOST(makeQueryRequest({ query: "", user_id: "u1" }));
+      const { jobs } = await qRes.json();
+      const job_id: string = jobs[0].job_id;
 
       const received: unknown[] = [];
       const unsub = subscribe((job, _forced) => received.push(job));
 
-      const res = await queuePOST(...makeQueueRequest("empty-flow-2"));
+      const res = await queuePOST(...makeQueueRequest(job_id));
       expect(res.status).toBe(200);
       expect(received).toHaveLength(1);
       unsub();
@@ -119,7 +119,7 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
       const { POST: queuePOST } = await import("@/app/job/queue/[job_id]/route");
       const { subscribe } = await import("@/lib/job-store");
 
-      const qRes = await queryPOST(makeQueryRequest({ query: "", user_id: "u1", job_id: "empty-flow-3" }));
+      const qRes = await queryPOST(makeQueryRequest({ query: "", user_id: "u1" }));
       const { jobs } = await qRes.json();
       const job_id: string = jobs[0].job_id;
 
@@ -128,7 +128,7 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
 
       await queuePOST(...makeQueueRequest(job_id));
 
-      expect(received[0].job_id).toBe("empty-flow-3");
+      expect(received[0].job_id).toBe(job_id);
       expect(received[0].panel_analysis).toBe("Poin satu\nPoin dua\nPoin tiga");
       // query is the manifesto tajuk, not the LLM prompt
       expect(typeof received[0].query).toBe("string");
@@ -140,7 +140,7 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
       const { POST: queryPOST } = await import("@/app/job/query/route");
       const { POST: queuePOST } = await import("@/app/job/queue/[job_id]/route");
 
-      await queryPOST(makeQueryRequest({ query: "", user_id: "u1", job_id: "empty-flow-4" }));
+      await queryPOST(makeQueryRequest({ query: "", user_id: "u1" }));
 
       const res = await queuePOST(...makeQueueRequest("wrong-id"));
       expect(res.status).toBe(404);
@@ -167,7 +167,7 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
       const received: unknown[] = [];
       const unsub = subscribe((job, _forced) => received.push(job));
 
-      const res = await queryPOST(makeQueryRequest({ query: "Apa itu JS-SEZ?", user_id: "u2", job_id: "valid-flow-1" }));
+      const res = await queryPOST(makeQueryRequest({ query: "Apa itu JS-SEZ?", user_id: "u2" }));
       expect(res.status).toBe(200);
       expect(received).toHaveLength(0);
       unsub();
@@ -178,12 +178,14 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
       const { POST: queuePOST } = await import("@/app/job/queue/[job_id]/route");
       const { subscribe } = await import("@/lib/job-store");
 
-      await queryPOST(makeQueryRequest({ query: "Apa itu JS-SEZ?", user_id: "u2", job_id: "valid-flow-2" }));
+      const qRes = await queryPOST(makeQueryRequest({ query: "Apa itu JS-SEZ?", user_id: "u2" }));
+      const { jobs } = await qRes.json();
+      const job_id: string = jobs[0].job_id;
 
       const received: Record<string, unknown>[] = [];
       const unsub = subscribe((job, _forced) => { if (job) received.push(job as unknown as Record<string, unknown>); });
 
-      const res = await queuePOST(...makeQueueRequest("valid-flow-2"));
+      const res = await queuePOST(...makeQueueRequest(job_id));
       expect(res.status).toBe(200);
       expect(received).toHaveLength(1);
       expect(received[0].query).toBe("Apa itu JS-SEZ?");
@@ -196,12 +198,14 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
       const { POST: queuePOST } = await import("@/app/job/queue/[job_id]/route");
       const { subscribe } = await import("@/lib/job-store");
 
-      await queryPOST(makeQueryRequest({ query: "Apa itu JS-SEZ?", user_id: "u2", job_id: "valid-flow-3" }));
+      const qRes = await queryPOST(makeQueryRequest({ query: "Apa itu JS-SEZ?", user_id: "u2" }));
+      const { jobs } = await qRes.json();
+      const job_id: string = jobs[0].job_id;
 
       const received: Record<string, unknown>[] = [];
       const unsub = subscribe((job, _forced) => { if (job) received.push(job as unknown as Record<string, unknown>); });
 
-      await queuePOST(...makeQueueRequest("valid-flow-3"));
+      await queuePOST(...makeQueueRequest(job_id));
       expect(received[0].rag_answer).toBe(
         "JS-SEZ ialah Zon Ekonomi Khas Johor-Singapura bernilai lapan puluh lapan bilion."
       );
@@ -213,17 +217,19 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
       const { POST: queuePOST } = await import("@/app/job/queue/[job_id]/route");
       const { subscribe } = await import("@/lib/job-store");
 
-      await queryPOST(makeQueryRequest({ query: "Apa itu JS-SEZ?", user_id: "u2", job_id: "valid-flow-4" }));
+      const qRes = await queryPOST(makeQueryRequest({ query: "Apa itu JS-SEZ?", user_id: "u2" }));
+      const { jobs } = await qRes.json();
+      const job_id: string = jobs[0].job_id;
 
       const received: Record<string, unknown>[] = [];
       const unsub = subscribe((job, _forced) => { if (job) received.push(job as unknown as Record<string, unknown>); });
 
-      await queuePOST(...makeQueueRequest("valid-flow-4"));
+      await queuePOST(...makeQueueRequest(job_id));
       expect(received[0].panel_analysis).toBe("Poin satu\nPoin dua\nPoin tiga");
       unsub();
     });
 
-    it("caller-provided job_id flows through both steps", async () => {
+    it("server-generated job_id flows through both steps — caller-supplied id is ignored", async () => {
       const { POST: queryPOST } = await import("@/app/job/query/route");
       const { POST: queuePOST } = await import("@/app/job/queue/[job_id]/route");
       const { subscribe } = await import("@/lib/job-store");
@@ -232,14 +238,19 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
         makeQueryRequest({ query: "Soalan sebenar?", user_id: "caller", job_id: "my-own-uuid-abc" })
       );
       const { jobs } = await res.json();
-      expect(jobs[0].job_id).toBe("my-own-uuid-abc");
+      const job_id: string = jobs[0].job_id;
+      expect(job_id).not.toBe("my-own-uuid-abc");
+
+      // The caller-supplied id was never stored — triggering it returns 404.
+      const wrongTrigger = await queuePOST(...makeQueueRequest("my-own-uuid-abc"));
+      expect(wrongTrigger.status).toBe(404);
 
       const received: Record<string, unknown>[] = [];
       const unsub = subscribe((job, _forced) => { if (job) received.push(job as unknown as Record<string, unknown>); });
 
-      const triggerRes = await queuePOST(...makeQueueRequest("my-own-uuid-abc"));
+      const triggerRes = await queuePOST(...makeQueueRequest(job_id));
       expect(triggerRes.status).toBe(200);
-      expect(received[0].job_id).toBe("my-own-uuid-abc");
+      expect(received[0].job_id).toBe(job_id);
       unsub();
     });
   });
@@ -260,7 +271,7 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
       const { POST: queryPOST } = await import("@/app/job/query/route");
       const { POST: queuePOST } = await import("@/app/job/queue/[job_id]/route");
 
-      const res = await queryPOST(makeQueryRequest({ query: "Soalan?", user_id: "u1", job_id: "fail-job" }));
+      const res = await queryPOST(makeQueryRequest({ query: "Soalan?", user_id: "u1" }));
       expect(res.status).toBe(500);
 
       // No job stored — trigger returns 404
@@ -275,7 +286,7 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
       const { POST: queryPOST } = await import("@/app/job/query/route");
       const { POST: queuePOST } = await import("@/app/job/queue/[job_id]/route");
 
-      const res = await queryPOST(makeQueryRequest({ query: "Soalan?", user_id: "u1", job_id: "empty-script" }));
+      const res = await queryPOST(makeQueryRequest({ query: "Soalan?", user_id: "u1" }));
       expect(res.status).toBe(500);
 
       const triggerRes = await queuePOST(...makeQueueRequest("empty-script"));
@@ -287,7 +298,7 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
 
       const { POST: queryPOST } = await import("@/app/job/query/route");
 
-      const res = await queryPOST(makeQueryRequest({ query: "Soalan?", user_id: "u1", job_id: "rag-fail" }));
+      const res = await queryPOST(makeQueryRequest({ query: "Soalan?", user_id: "u1" }));
       expect(res.status).toBe(503);
     });
 
@@ -313,12 +324,14 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
       const { POST: queuePOST } = await import("@/app/job/queue/[job_id]/route");
       const { subscribe } = await import("@/lib/job-store");
 
-      await queryPOST(makeQueryRequest({ query: "Soalan?", user_id: "u1", job_id: "83-word-test" }));
+      const qRes = await queryPOST(makeQueryRequest({ query: "Soalan?", user_id: "u1" }));
+      const { jobs } = await qRes.json();
+      const job_id: string = jobs[0].job_id;
 
       const received: Record<string, unknown>[] = [];
       const unsub = subscribe((job, _forced) => { if (job) received.push(job as unknown as Record<string, unknown>); });
 
-      await queuePOST(...makeQueueRequest("83-word-test"));
+      await queuePOST(...makeQueueRequest(job_id));
 
       const storedScript = received[0].script as string;
       expect(storedScript.split(/\s+/).length).toBe(83);
@@ -334,11 +347,13 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
       const { POST: queuePOST } = await import("@/app/job/queue/[job_id]/route");
       const { subscribe } = await import("@/lib/job-store");
 
-      await queryPOST(makeQueryRequest({ query: "Soalan?", user_id: "u1", job_id: "passthrough" }));
+      const qRes = await queryPOST(makeQueryRequest({ query: "Soalan?", user_id: "u1" }));
+      const { jobs } = await qRes.json();
+      const job_id: string = jobs[0].job_id;
 
       const received: Record<string, unknown>[] = [];
       const unsub = subscribe((job, _forced) => { if (job) received.push(job as unknown as Record<string, unknown>); });
-      await queuePOST(...makeQueueRequest("passthrough"));
+      await queuePOST(...makeQueueRequest(job_id));
 
       expect(received[0].script).toBe(script);
       unsub();
@@ -348,7 +363,7 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
       mockGenerateScript.mockResolvedValue("Skrip manifesto.");
 
       const { POST: queryPOST } = await import("@/app/job/query/route");
-      await queryPOST(makeQueryRequest({ query: "", user_id: "u1", job_id: "manifesto-83" }));
+      await queryPOST(makeQueryRequest({ query: "" }));
 
       expect(mockGenerateScript).toHaveBeenCalledOnce();
       // RAG context arg should be the manifesto item's konten (non-empty)

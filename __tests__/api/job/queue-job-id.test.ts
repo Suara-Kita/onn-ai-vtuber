@@ -18,7 +18,6 @@ vi.mock("@/lib/job-store", () => ({
 vi.mock("@/lib/redis", () => ({
   redis: { get: mockRedisGet },
   QA_KEY: "vroid:qa:recent",
-  QA_TTL_SECONDS: 3600,
   JOB_KEY: (job_id: string) => `vroid:job:${job_id}`,
 }));
 

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
 import { createJob } from "@/lib/job-store";
-import { redis, QA_KEY, QA_TTL_SECONDS, JOB_KEY } from "@/lib/redis";
+import { redis, QA_KEY, JOB_KEY } from "@/lib/redis";
 import { queryRagKb } from "@/lib/rag";
 import { generateScript, simplifyForQA, analyzeForPanel } from "@/lib/llm";
 import manifestoItems from "@/manifesto.json";
@@ -15,7 +15,9 @@ export async function POST(request: NextRequest) {
 
   let query: string = body?.query ?? "";
   const user_id: string = body?.user_id || "anonymous";
-  const job_id = (body?.job_id as string | undefined) || randomUUID();
+  // job_id is always server-generated — a caller-supplied id would let two
+  // different scripts silently overwrite each other under the same key.
+  const job_id = randomUUID();
 
   // Empty query (any user_id) — pick a random manifesto item; skip KB
   const isManifesto = !query.trim();
@@ -74,9 +76,9 @@ export async function POST(request: NextRequest) {
   await redis
     .pipeline()
     .zadd(QA_KEY, score, member)
-    .zremrangebyscore(QA_KEY, "-inf", score - QA_TTL_SECONDS)
-    // Direct key for O(1) job_id lookup in queue/[job_id]
-    .set(JOB_KEY(job_id), member, "EX", QA_TTL_SECONDS)
+    // Direct key for O(1) job_id lookup in queue/[job_id] — no expiry, jobs
+    // must remain fetchable whenever the streaming client gets around to them.
+    .set(JOB_KEY(job_id), member)
     .exec()
     .catch((err: Error) => console.error("[redis] zadd failed:", err.message));
 

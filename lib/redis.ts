@@ -18,6 +18,5 @@ function createClient(): Redis {
 export const redis: Redis = globalThis.__redis ?? (globalThis.__redis = createClient());
 
 export const QA_KEY = "vroid:qa:recent";
-export const QA_TTL_SECONDS = 3600; // 1 hour — survive full live-event session
 
 export const JOB_KEY = (job_id: string) => `vroid:job:${job_id}`;
