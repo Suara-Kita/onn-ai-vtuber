@@ -1,5 +1,10 @@
 /**
- * End-to-end flow tests: POST /job/query (store) → POST /job/queue/[job_id] (display)
+ * End-to-end flow tests: POST /job/query (store, and look up an existing
+ * job_id's already-generated script) → POST /job/queue/[job_id] (display).
+ *
+ * Only POST /job/queue/[job_id] ever broadcasts to the left panel over SSE.
+ * POST /job/query never triggers it, whether it's creating a new job or
+ * returning a cached one by job_id.
  *
  * Uses the real job-store so jobs created in step 1 are visible to step 2.
  * LLM, RAG and Redis are mocked to keep tests fast and deterministic.
@@ -250,6 +255,72 @@ describe("Full flow: POST /job/query → POST /job/queue/[job_id]", () => {
 
       const triggerRes = await queuePOST(...makeQueueRequest(job_id));
       expect(triggerRes.status).toBe(200);
+      expect(received[0].job_id).toBe(job_id);
+      unsub();
+    });
+  });
+
+  // ── Re-posting an existing job_id to /job/query ─────────────────────────────
+
+  describe("POST /job/query with an existing job_id", () => {
+    beforeEach(() => {
+      mockQueryRagKb.mockResolvedValue("JS-SEZ ialah Zon Ekonomi Khas Johor-Singapura bernilai lapan puluh lapan bilion.");
+      mockGenerateScript.mockResolvedValue("Skrip JS-SEZ sedia ada.");
+    });
+
+    it("returns the same job_id and script instead of generating a new one", async () => {
+      const { POST: queryPOST } = await import("@/app/job/query/route");
+
+      const firstRes = await queryPOST(makeQueryRequest({ query: "Apa itu JS-SEZ?", user_id: "u1" }));
+      const { jobs: firstJobs } = await firstRes.json();
+      const job_id: string = firstJobs[0].job_id;
+
+      mockQueryRagKb.mockClear();
+      mockGenerateScript.mockClear();
+
+      const secondRes = await queryPOST(makeQueryRequest({ job_id }));
+      const { jobs: secondJobs } = await secondRes.json();
+
+      expect(secondRes.status).toBe(200);
+      expect(secondJobs[0]).toEqual(firstJobs[0]);
+      // No regeneration — RAG/LLM untouched on the lookup path.
+      expect(mockQueryRagKb).not.toHaveBeenCalled();
+      expect(mockGenerateScript).not.toHaveBeenCalled();
+    });
+
+    it("does not broadcast to the left panel when looking up an existing job_id", async () => {
+      const { POST: queryPOST } = await import("@/app/job/query/route");
+      const { subscribe } = await import("@/lib/job-store");
+
+      const firstRes = await queryPOST(makeQueryRequest({ query: "Apa itu JS-SEZ?", user_id: "u1" }));
+      const { jobs } = await firstRes.json();
+      const job_id: string = jobs[0].job_id;
+
+      const received: unknown[] = [];
+      const unsub = subscribe((job, _forced) => received.push(job));
+
+      await queryPOST(makeQueryRequest({ job_id }));
+
+      expect(received).toHaveLength(0);
+      unsub();
+    });
+
+    it("the looked-up job_id can still be triggered afterwards via /job/queue/[job_id]", async () => {
+      const { POST: queryPOST } = await import("@/app/job/query/route");
+      const { POST: queuePOST } = await import("@/app/job/queue/[job_id]/route");
+      const { subscribe } = await import("@/lib/job-store");
+
+      const firstRes = await queryPOST(makeQueryRequest({ query: "Apa itu JS-SEZ?", user_id: "u1" }));
+      const { jobs } = await firstRes.json();
+      const job_id: string = jobs[0].job_id;
+
+      await queryPOST(makeQueryRequest({ job_id })); // lookup, no side effects
+
+      const received: Record<string, unknown>[] = [];
+      const unsub = subscribe((job, _forced) => { if (job) received.push(job as unknown as Record<string, unknown>); });
+
+      const res = await queuePOST(...makeQueueRequest(job_id));
+      expect(res.status).toBe(200);
       expect(received[0].job_id).toBe(job_id);
       unsub();
     });

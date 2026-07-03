@@ -1,22 +1,72 @@
 import { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
-import { createJob } from "@/lib/job-store";
+import { createJob, getJob } from "@/lib/job-store";
 import { redis, QA_KEY, JOB_KEY } from "@/lib/redis";
 import { queryRagKb } from "@/lib/rag";
 import { generateScript, simplifyForQA, analyzeForPanel } from "@/lib/llm";
 import manifestoItems from "@/manifesto.json";
+import type { QAEntry } from "@/app/job/qa-recent/route";
 
 interface ManifestoItem { teras: string; tajuk: string; konten: string[] }
 const manifesto = manifestoItems as ManifestoItem[];
 let manifestoIndex = 0;
 
+// In-memory hit, or rehydrate from Redis (server may have restarted since
+// the job was created). Returns null if job_id isn't a real, prior job.
+async function findExistingJob(job_id: string) {
+  const inMemory = getJob(job_id);
+  if (inMemory) return inMemory;
+
+  try {
+    const raw = await redis.get(JOB_KEY(job_id));
+    if (!raw) return null;
+    const entry = JSON.parse(raw) as QAEntry;
+    const rehydrated = {
+      job_id: entry.job_id,
+      script: entry.script,
+      query: entry.query,
+      user_id: "remote",
+      rag_answer: entry.rag_answer ?? "",
+      qa_answer: entry.qa_answer ?? "",
+      panel_analysis: entry.panel_analysis ?? "",
+      created_at: new Date(entry.created_at),
+    };
+    createJob(rehydrated);
+    return rehydrated;
+  } catch (err) {
+    console.error("[redis] job lookup failed:", (err as Error).message);
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
 
+  // A caller-supplied job_id that matches an already-generated job is a
+  // lookup, not a new request — return the same job_id and its existing
+  // script instead of running RAG/LLM again. This never touches the left
+  // panel — only POST /job/queue/[job_id] triggers that.
+  const requestedJobId: string | undefined = typeof body?.job_id === "string" ? body.job_id : undefined;
+  if (requestedJobId) {
+    const cached = await findExistingJob(requestedJobId);
+    if (cached) {
+      return Response.json({
+        jobs: [{
+          job_id: cached.job_id,
+          script: cached.script,
+          rag_answer: cached.rag_answer,
+          qa_answer: cached.qa_answer,
+          panel_analysis: cached.panel_analysis,
+        }],
+      });
+    }
+  }
+
   let query: string = body?.query ?? "";
   const user_id: string = body?.user_id || "anonymous";
-  // job_id is always server-generated — a caller-supplied id would let two
-  // different scripts silently overwrite each other under the same key.
+  // job_id is server-generated for any new job — a caller-supplied id that
+  // doesn't match an existing job is ignored rather than adopted, so two
+  // different scripts can never silently overwrite each other under the same key.
   const job_id = randomUUID();
 
   // Empty query (any user_id) — pick a random manifesto item; skip KB
@@ -69,6 +119,7 @@ export async function POST(request: NextRequest) {
 
   const created_at = new Date();
   createJob({ job_id, script, query, user_id, rag_answer, qa_answer, panel_analysis, created_at });
+  // No SSE broadcast here — the left panel only updates via POST /job/queue/[job_id].
 
   // Store Q&A in Redis sorted set — score = Unix seconds for time-window queries
   const score = Math.floor(created_at.getTime() / 1000);

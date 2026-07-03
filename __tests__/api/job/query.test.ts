@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-const { mockCreateJob, mockPipeline, mockQueryRagKb, mockGenerateScript, mockSimplifyForQA, mockAnalyzeForPanel } =
+const { mockCreateJob, mockGetJob, mockRedisGet, mockPipeline, mockQueryRagKb, mockGenerateScript, mockSimplifyForQA, mockAnalyzeForPanel } =
   vi.hoisted(() => {
     const mockPipeline = {
       zadd: vi.fn().mockReturnThis(),
@@ -10,6 +10,8 @@ const { mockCreateJob, mockPipeline, mockQueryRagKb, mockGenerateScript, mockSim
     };
     return {
       mockCreateJob: vi.fn(),
+      mockGetJob: vi.fn().mockReturnValue(undefined),
+      mockRedisGet: vi.fn().mockResolvedValue(null),
       mockPipeline,
       mockQueryRagKb: vi.fn(),
       mockGenerateScript: vi.fn(),
@@ -25,12 +27,13 @@ vi.mock("@/lib/llm", () => ({
   analyzeForPanel: mockAnalyzeForPanel,
 }));
 vi.mock("@/lib/redis", () => ({
-  redis: { pipeline: vi.fn(() => mockPipeline) },
+  redis: { pipeline: vi.fn(() => mockPipeline), get: mockRedisGet },
   QA_KEY: "vroid:qa:recent",
   JOB_KEY: (job_id: string) => `vroid:job:${job_id}`,
 }));
 vi.mock("@/lib/job-store", () => ({
   createJob: mockCreateJob,
+  getJob: mockGetJob,
 }));
 
 import { POST } from "@/app/job/query/route";
@@ -52,6 +55,8 @@ describe("POST /job/query", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPipeline.exec.mockResolvedValue([[null, 1], [null, 0]]);
+    mockGetJob.mockReturnValue(undefined);
+    mockRedisGet.mockResolvedValue(null);
   });
 
   // ── Manifesto fallback (empty query) ────────────────────────────────────
@@ -114,13 +119,9 @@ describe("POST /job/query", () => {
       expect(jobs1[0].job_id).not.toBe(jobs2[0].job_id);
     });
 
-    it("does NOT fire SSE — left panel only updates on /job/queue/[job_id]", async () => {
-      // Query route no longer imports or calls triggerJob
-      // Verifying createJob is called (job stored) but no broadcast happens
+    it("stores the job but does not touch the left panel — only /job/queue/[job_id] triggers SSE", async () => {
       await POST(makeRequest({ query: "", user_id: "u1" }));
       expect(mockCreateJob).toHaveBeenCalledOnce();
-      // If triggerJob were imported and called, it would appear as a separate mock call.
-      // The absence of a mockTriggerJob mock here confirms it is not used.
     });
 
     it("includes panel_analysis in the response", async () => {
@@ -135,6 +136,91 @@ describe("POST /job/query", () => {
       const memberStr = mockPipeline.zadd.mock.calls[0][2] as string;
       const member = JSON.parse(memberStr);
       expect(member.panel_analysis).toBe("Fakta pertama\nFakta kedua\nFakta ketiga");
+    });
+  });
+
+  // ── Existing job_id lookup ────────────────────────────────────────────────
+
+  describe("caller-supplied job_id that matches an existing job", () => {
+    const existingJob = {
+      job_id: "2ebc30ce-986e-4875-a8ef-9cf49c5430b0",
+      script: "Skrip sedia ada.",
+      query: "Soalan asal?",
+      user_id: "u1",
+      rag_answer: "Jawapan RAG asal.",
+      qa_answer: "Ringkasan asal.",
+      panel_analysis: "Analisis asal.",
+      created_at: new Date(),
+    };
+
+    it("returns the same job_id and its already-generated script, in-memory hit", async () => {
+      mockGetJob.mockReturnValue(existingJob);
+
+      const res = await POST(makeRequest({ job_id: existingJob.job_id }));
+      const { jobs } = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(jobs[0]).toEqual({
+        job_id: existingJob.job_id,
+        script: existingJob.script,
+        rag_answer: existingJob.rag_answer,
+        qa_answer: existingJob.qa_answer,
+        panel_analysis: existingJob.panel_analysis,
+      });
+    });
+
+    it("does not call the LLM or RAG when returning a cached job", async () => {
+      mockGetJob.mockReturnValue(existingJob);
+
+      await POST(makeRequest({ job_id: existingJob.job_id }));
+
+      expect(mockQueryRagKb).not.toHaveBeenCalled();
+      expect(mockGenerateScript).not.toHaveBeenCalled();
+    });
+
+    it("does not create a new job or write to Redis when returning a cached job", async () => {
+      mockGetJob.mockReturnValue(existingJob);
+
+      await POST(makeRequest({ job_id: existingJob.job_id }));
+
+      expect(mockCreateJob).not.toHaveBeenCalled();
+      expect(mockPipeline.zadd).not.toHaveBeenCalled();
+    });
+
+    it("falls back to Redis when the job isn't in memory (server restarted)", async () => {
+      mockGetJob.mockReturnValue(undefined);
+      mockRedisGet.mockResolvedValue(JSON.stringify({
+        job_id: existingJob.job_id,
+        query: existingJob.query,
+        script: existingJob.script,
+        rag_answer: existingJob.rag_answer,
+        qa_answer: existingJob.qa_answer,
+        panel_analysis: existingJob.panel_analysis,
+        created_at: existingJob.created_at.toISOString(),
+      }));
+
+      const res = await POST(makeRequest({ job_id: existingJob.job_id }));
+      const { jobs } = await res.json();
+
+      expect(jobs[0].job_id).toBe(existingJob.job_id);
+      expect(jobs[0].script).toBe(existingJob.script);
+      // Rehydrates into memory so future lookups are O(1) again.
+      expect(mockCreateJob).toHaveBeenCalledWith(
+        expect.objectContaining({ job_id: existingJob.job_id })
+      );
+    });
+
+    it("falls through to generating a new job when job_id matches nothing in memory or Redis", async () => {
+      mockGetJob.mockReturnValue(undefined);
+      mockRedisGet.mockResolvedValue(null);
+      mockGenerateScript.mockResolvedValue("Skrip manifesto baharu.");
+
+      const res = await POST(makeRequest({ query: "", job_id: "unknown-job-id" }));
+      const { jobs } = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(jobs[0].job_id).not.toBe("unknown-job-id");
+      expect(mockGenerateScript).toHaveBeenCalledOnce();
     });
   });
 
@@ -210,9 +296,8 @@ describe("POST /job/query", () => {
       expect(member.job_id).toMatch(/^[0-9a-f-]{36}$/);
     });
 
-    it("does NOT fire SSE — job is only stored, not displayed yet", async () => {
+    it("stores the job but does not touch the left panel — only /job/queue/[job_id] triggers SSE", async () => {
       await POST(makeRequest({ query: "Soalan?", user_id: "u1" }));
-      // createJob runs (store), but no broadcast — left panel stays unchanged
       expect(mockCreateJob).toHaveBeenCalledOnce();
     });
   });
