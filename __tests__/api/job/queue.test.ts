@@ -1,12 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-const { mockTriggerJob } = vi.hoisted(() => ({
+const { mockTriggerJob, mockCreateJob } = vi.hoisted(() => ({
   mockTriggerJob: vi.fn(),
+  mockCreateJob: vi.fn(),
+}));
+
+const { mockRedisGet } = vi.hoisted(() => ({
+  mockRedisGet: vi.fn(),
 }));
 
 vi.mock("@/lib/job-store", () => ({
   triggerJob: mockTriggerJob,
+  createJob: mockCreateJob,
+}));
+
+vi.mock("@/lib/redis", () => ({
+  redis: { get: mockRedisGet },
+  QA_KEY: "vroid:qa:recent",
+  JOB_KEY: (job_id: string) => `vroid:job:${job_id}`,
 }));
 
 import { POST } from "@/app/job/queue/route";
@@ -21,10 +33,23 @@ function makeRequest(body: object) {
   });
 }
 
+const SAMPLE_ENTRY = {
+  job_id: "abc-123",
+  query: "Apa itu JS-SEZ?",
+  script: "JS-SEZ ialah...",
+  rag_answer: "Jawatan Sel Ekonomi...",
+  qa_answer: "Zon ekonomi khas di Johor",
+  panel_analysis: "Pelaburan RM88 bilion",
+  created_at: new Date().toISOString(),
+};
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("POST /job/queue", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockRedisGet.mockResolvedValue(null);
+  });
 
   // ── Input validation ──────────────────────────────────────────────────────
 
@@ -57,28 +82,10 @@ describe("POST /job/queue", () => {
     });
   });
 
-  // ── Job lookup ────────────────────────────────────────────────────────────
+  // ── In-memory fast path ───────────────────────────────────────────────────
 
-  describe("job lookup", () => {
-    it("returns 404 when job_id is not found in the store", async () => {
-      mockTriggerJob.mockReturnValue(false);
-      const res = await POST(makeRequest({ job_id: "unknown-id" }));
-      expect(res.status).toBe(404);
-      const data = await res.json();
-      expect(data.error).toMatch(/not found/);
-    });
-
-    it("calls triggerJob with the exact job_id provided", async () => {
-      mockTriggerJob.mockReturnValue(true);
-      await POST(makeRequest({ job_id: "specific-job-id-abc" }));
-      expect(mockTriggerJob).toHaveBeenCalledWith("specific-job-id-abc");
-    });
-  });
-
-  // ── Successful trigger ────────────────────────────────────────────────────
-
-  describe("successful trigger", () => {
-    it("returns 200 when the job is found and triggered", async () => {
+  describe("in-memory fast path", () => {
+    it("returns 200 when job is found in memory", async () => {
       mockTriggerJob.mockReturnValue(true);
       const res = await POST(makeRequest({ job_id: "valid-id" }));
       expect(res.status).toBe(200);
@@ -92,10 +99,79 @@ describe("POST /job/queue", () => {
       expect(data.job_id).toBe("valid-id");
     });
 
+    it("calls triggerJob with forced=true", async () => {
+      mockTriggerJob.mockReturnValue(true);
+      await POST(makeRequest({ job_id: "specific-job-id-abc" }));
+      expect(mockTriggerJob).toHaveBeenCalledWith("specific-job-id-abc", true);
+    });
+
+    it("does not query Redis when in-memory hit succeeds", async () => {
+      mockTriggerJob.mockReturnValue(true);
+      await POST(makeRequest({ job_id: "valid-id" }));
+      expect(mockRedisGet).not.toHaveBeenCalled();
+    });
+
     it("calls triggerJob exactly once per request", async () => {
       mockTriggerJob.mockReturnValue(true);
       await POST(makeRequest({ job_id: "valid-id" }));
       expect(mockTriggerJob).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ── Redis fallback (in-memory miss) ──────────────────────────────────────
+
+  describe("Redis fallback", () => {
+    beforeEach(() => {
+      // First triggerJob call (memory) misses; second call (after rehydration) succeeds
+      mockTriggerJob.mockReturnValueOnce(false).mockReturnValueOnce(true);
+    });
+
+    it("queries Redis when in-memory miss", async () => {
+      mockRedisGet.mockResolvedValue(JSON.stringify(SAMPLE_ENTRY));
+      await POST(makeRequest({ job_id: "abc-123" }));
+      expect(mockRedisGet).toHaveBeenCalledWith("vroid:job:abc-123");
+    });
+
+    it("returns 404 when job_id is not found in the store or Redis", async () => {
+      mockRedisGet.mockResolvedValue(null);
+      const res = await POST(makeRequest({ job_id: "unknown-id" }));
+      expect(res.status).toBe(404);
+      const data = await res.json();
+      expect(data.error).toMatch(/not found/);
+    });
+
+    it("rehydrates matching entry via createJob", async () => {
+      mockRedisGet.mockResolvedValue(JSON.stringify(SAMPLE_ENTRY));
+      await POST(makeRequest({ job_id: "abc-123" }));
+      expect(mockCreateJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          job_id: "abc-123",
+          script: SAMPLE_ENTRY.script,
+          query: SAMPLE_ENTRY.query,
+          user_id: "remote",
+        })
+      );
+    });
+
+    it("returns 200 after successful rehydration and trigger", async () => {
+      mockRedisGet.mockResolvedValue(JSON.stringify(SAMPLE_ENTRY));
+      const res = await POST(makeRequest({ job_id: "abc-123" }));
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.job_id).toBe("abc-123");
+    });
+
+    it("returns 404 when Redis throws", async () => {
+      mockRedisGet.mockRejectedValue(new Error("redis down"));
+      const res = await POST(makeRequest({ job_id: "abc-123" }));
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 404 on malformed Redis member without throwing", async () => {
+      mockRedisGet.mockResolvedValue("not-json");
+      const res = await POST(makeRequest({ job_id: "abc-123" }));
+      expect(res.status).toBe(404);
     });
   });
 });
