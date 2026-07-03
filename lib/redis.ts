@@ -20,3 +20,5 @@ export const redis: Redis = globalThis.__redis ?? (globalThis.__redis = createCl
 export const QA_KEY = "vroid:qa:recent";
 
 export const JOB_KEY = (job_id: string) => `vroid:job:${job_id}`;
+
+export const MANIFESTO_INDEX_KEY = "vroid:manifesto:index";

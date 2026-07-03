@@ -15,7 +15,7 @@ import { NextRequest } from "next/server";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
-const { mockPipeline, mockQueryRagKb, mockGenerateScript, mockSimplifyForQA, mockAnalyzeForPanel, mockRedisGet } =
+const { mockPipeline, mockQueryRagKb, mockGenerateScript, mockSimplifyForQA, mockAnalyzeForPanel, mockRedisGet, mockRedisIncr } =
   vi.hoisted(() => {
     const mockPipeline = {
       zadd: vi.fn().mockReturnThis(),
@@ -29,6 +29,7 @@ const { mockPipeline, mockQueryRagKb, mockGenerateScript, mockSimplifyForQA, moc
       mockSimplifyForQA: vi.fn().mockResolvedValue("Ringkasan satu ayat."),
       mockAnalyzeForPanel: vi.fn().mockResolvedValue("Poin satu\nPoin dua\nPoin tiga"),
       mockRedisGet: vi.fn().mockResolvedValue(null),
+      mockRedisIncr: vi.fn().mockResolvedValue(1),
     };
   });
 
@@ -43,9 +44,11 @@ vi.mock("@/lib/redis", () => ({
   redis: {
     pipeline: vi.fn(() => mockPipeline),
     get: mockRedisGet,
+    incr: mockRedisIncr,
   },
   QA_KEY: "vroid:qa:recent",
   JOB_KEY: (job_id: string) => `vroid:job:${job_id}`,
+  MANIFESTO_INDEX_KEY: "vroid:manifesto:index",
 }));
 
 // ── Reset store between tests ──────────────────────────────────────────────
@@ -58,6 +61,7 @@ beforeEach(() => {
   mockSimplifyForQA.mockResolvedValue("Ringkasan satu ayat.");
   mockAnalyzeForPanel.mockResolvedValue("Poin satu\nPoin dua\nPoin tiga");
   mockRedisGet.mockResolvedValue(null);
+  mockRedisIncr.mockResolvedValue(1);
 });
 
 // ── Request helpers ────────────────────────────────────────────────────────

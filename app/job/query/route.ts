@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
 import { createJob, getJob } from "@/lib/job-store";
-import { redis, QA_KEY, JOB_KEY } from "@/lib/redis";
+import { redis, QA_KEY, JOB_KEY, MANIFESTO_INDEX_KEY } from "@/lib/redis";
 import { queryRagKb } from "@/lib/rag";
 import { generateScript, simplifyForQA, analyzeForPanel } from "@/lib/llm";
 import manifestoItems from "@/manifesto.json";
@@ -9,7 +9,18 @@ import type { QAEntry } from "@/app/job/qa-recent/route";
 
 interface ManifestoItem { teras: string; tajuk: string; konten: string[] }
 const manifesto = manifestoItems as ManifestoItem[];
-let manifestoIndex = 0;
+
+// INCR is atomic, so concurrent requests across instances still get distinct,
+// sequential indices — a plain in-memory counter can't guarantee that and
+// resets to 0 on every restart/redeploy.
+async function nextManifestoIndex(): Promise<number> {
+  try {
+    return (await redis.incr(MANIFESTO_INDEX_KEY)) - 1;
+  } catch (err) {
+    console.error("[redis] manifesto index incr failed:", (err as Error).message);
+    return Math.floor(Math.random() * manifesto.length);
+  }
+}
 
 // In-memory hit, or rehydrate from Redis (server may have restarted since
 // the job was created). Returns null if job_id isn't a real, prior job.
@@ -78,9 +89,9 @@ export async function POST(request: NextRequest) {
   let simplifyQuery = query;
   let simplifyContext = "";
   if (isManifesto) {
+    const manifestoIndex = await nextManifestoIndex();
     const item = manifesto[manifestoIndex % manifesto.length];
     console.log(`[manifesto] index=${manifestoIndex} → "${item.tajuk}"`);
-    manifestoIndex++;
     query = item.tajuk;
     llmPrompt = item.tajuk;
     simplifyQuery = item.tajuk;

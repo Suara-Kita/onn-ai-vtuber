@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
+import manifestoItems from "@/manifesto.json";
 
-const { mockCreateJob, mockGetJob, mockRedisGet, mockPipeline, mockQueryRagKb, mockGenerateScript, mockSimplifyForQA, mockAnalyzeForPanel } =
+const { mockCreateJob, mockGetJob, mockRedisGet, mockRedisIncr, mockPipeline, mockQueryRagKb, mockGenerateScript, mockSimplifyForQA, mockAnalyzeForPanel } =
   vi.hoisted(() => {
     const mockPipeline = {
       zadd: vi.fn().mockReturnThis(),
@@ -12,6 +13,7 @@ const { mockCreateJob, mockGetJob, mockRedisGet, mockPipeline, mockQueryRagKb, m
       mockCreateJob: vi.fn(),
       mockGetJob: vi.fn().mockReturnValue(undefined),
       mockRedisGet: vi.fn().mockResolvedValue(null),
+      mockRedisIncr: vi.fn().mockResolvedValue(1),
       mockPipeline,
       mockQueryRagKb: vi.fn(),
       mockGenerateScript: vi.fn(),
@@ -27,9 +29,10 @@ vi.mock("@/lib/llm", () => ({
   analyzeForPanel: mockAnalyzeForPanel,
 }));
 vi.mock("@/lib/redis", () => ({
-  redis: { pipeline: vi.fn(() => mockPipeline), get: mockRedisGet },
+  redis: { pipeline: vi.fn(() => mockPipeline), get: mockRedisGet, incr: mockRedisIncr },
   QA_KEY: "vroid:qa:recent",
   JOB_KEY: (job_id: string) => `vroid:job:${job_id}`,
+  MANIFESTO_INDEX_KEY: "vroid:manifesto:index",
 }));
 vi.mock("@/lib/job-store", () => ({
   createJob: mockCreateJob,
@@ -57,6 +60,7 @@ describe("POST /job/query", () => {
     mockPipeline.exec.mockResolvedValue([[null, 1], [null, 0]]);
     mockGetJob.mockReturnValue(undefined);
     mockRedisGet.mockResolvedValue(null);
+    mockRedisIncr.mockResolvedValue(1);
   });
 
   // ── Manifesto fallback (empty query) ────────────────────────────────────
@@ -136,6 +140,30 @@ describe("POST /job/query", () => {
       const memberStr = mockPipeline.zadd.mock.calls[0][2] as string;
       const member = JSON.parse(memberStr);
       expect(member.panel_analysis).toBe("Fakta pertama\nFakta kedua\nFakta ketiga");
+    });
+
+    it("increments the manifesto index in Redis so it persists across restarts", async () => {
+      await POST(makeRequest({ query: "", user_id: "u1" }));
+      expect(mockRedisIncr).toHaveBeenCalledWith("vroid:manifesto:index");
+    });
+
+    it("still returns a job when the Redis incr call fails", async () => {
+      mockRedisIncr.mockRejectedValueOnce(new Error("Redis down"));
+      const res = await POST(makeRequest({ query: "", user_id: "u1" }));
+      expect(res.status).toBe(200);
+    });
+
+    it("cycles through manifesto items 0 through 10 in order across consecutive requests", async () => {
+      // Fake Redis INCR: a real counter that increments on every call, the
+      // same contract redis.incr gives us in production.
+      let counter = 0;
+      mockRedisIncr.mockImplementation(async () => ++counter);
+
+      for (let i = 0; i <= 10; i++) {
+        await POST(makeRequest({ query: "", user_id: "u1" }));
+        const storedQuery: string = mockCreateJob.mock.calls[i][0].query;
+        expect(storedQuery).toBe(manifestoItems[i].tajuk);
+      }
     });
   });
 
